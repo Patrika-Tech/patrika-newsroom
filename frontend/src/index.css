@@ -20,11 +20,12 @@
 }
 
 html, body, #root { height: 100%; }
+html { font-size: 17px; }
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: 'Mukta', system-ui, sans-serif;
+  font-family: 'Roboto', 'Noto Sans Devanagari', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
