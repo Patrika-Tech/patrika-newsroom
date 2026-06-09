@@ -432,27 +432,55 @@ export default function Production() {
       {/* Send result banner */}
       {sendResult && (
         <div className="mb-4 rounded-xl p-3 text-sm flex items-start gap-3"
-          style={{ background: sendResult.ok === false ? '#d7192015' : '#10b98115',
-                   border: `1px solid ${sendResult.ok === false ? '#d7192030' : '#10b98130'}` }}>
-          <div className="flex-1">
-            {sendResult.noDelays && <span>✅ No delays found for {date} — nothing sent.</span>}
-            {sendResult.skipped  && <span>⚠️ Telegram bot token not configured. Set TELEGRAM_BOT_TOKEN in .env</span>}
-            {sendResult.error    && <span>❌ Error: {sendResult.error}</span>}
+          style={{
+            background: sendResult.error ? '#d7192015' : (sendResult.sent?.length > 0 ? '#10b98115' : '#C9A22715'),
+            border: `1px solid ${sendResult.error ? '#d7192030' : (sendResult.sent?.length > 0 ? '#10b98130' : '#C9A22730')}`,
+          }}>
+          <div className="flex-1 space-y-1.5">
+            {sendResult.noDelays && (
+              <p>✅ No delays found for <strong>{date}</strong> — nothing to send.</p>
+            )}
+            {sendResult.skipped && (
+              <p>⚠️ Telegram bot token not set. Add <code className="text-xs bg-black/10 px-1 rounded">TELEGRAM_BOT_TOKEN</code> in <code className="text-xs bg-black/10 px-1 rounded">.env</code> and restart server.</p>
+            )}
+            {sendResult.error && (
+              <p style={{ color: '#d71920' }}>❌ Error: {sendResult.error}</p>
+            )}
             {sendResult.sent?.length > 0 && (
-              <span>✅ Sent to <strong>{sendResult.sent.length}</strong> recipients: {sendResult.sent.map(s => s.name).join(', ')}</span>
+              <p style={{ color: '#10b981' }}>
+                ✅ Sent to <strong>{sendResult.sent.length}</strong> recipient{sendResult.sent.length > 1 ? 's' : ''}:{' '}
+                {sendResult.sent.map(s => `${s.name} (${s.branch})`).join(', ')}
+              </p>
             )}
             {sendResult.failed?.length > 0 && (
-              <span className="block mt-1" style={{ color: '#d71920' }}>
-                ❌ Failed: {sendResult.failed.map(f => `${f.name} (${f.error})`).join(', ')}
-              </span>
+              <p style={{ color: '#d71920' }}>
+                ❌ Failed ({sendResult.failed.length}): {sendResult.failed.map(f => `${f.name} — ${f.error}`).join('; ')}
+              </p>
             )}
-            {sendResult.noRecipients?.length > 0 && (
-              <span className="block mt-1" style={{ color: '#C9A227' }}>
-                ⚠️ No Telegram ID configured for: {sendResult.noRecipients.join(', ')} — use 🔔 to set up
-              </span>
-            )}
+            {sendResult.noRecipients?.length > 0 && (() => {
+              const list  = sendResult.noRecipients;
+              const show  = list.slice(0, 5);
+              const extra = list.length - show.length;
+              return (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span style={{ color: '#C9A227' }}>
+                    ⚠️ <strong>{list.length} branch{list.length > 1 ? 'es' : ''}</strong> need Telegram setup:{' '}
+                    {show.join(', ')}{extra > 0 ? ` and ${extra} more` : ''}
+                  </span>
+                  <button
+                    onClick={() => { setSendResult(null); setShowConfig(true); }}
+                    className="text-xs px-2.5 py-0.5 rounded-lg font-semibold flex items-center gap-1 flex-shrink-0"
+                    style={{ background: '#C9A227', color: '#fff' }}
+                  >
+                    <Bell size={11} /> Configure Now
+                  </button>
+                </div>
+              );
+            })()}
           </div>
-          <button onClick={() => setSendResult(null)} className="flex-shrink-0"><X size={14} /></button>
+          <button onClick={() => setSendResult(null)} className="flex-shrink-0 mt-0.5">
+            <X size={14} style={{ color: 'var(--muted)' }} />
+          </button>
         </div>
       )}
 
