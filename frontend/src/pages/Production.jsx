@@ -90,6 +90,7 @@ function TelegramConfigModal({ onClose }) {
   const [edits,       setEdits]       = useState({});
   const [search,      setSearch]      = useState('');
   const [copied,      setCopied]      = useState(false);
+  const [filterTab,   setFilterTab]   = useState('all'); // 'all' | 'joined' | 'pending'
 
   const token = localStorage.getItem('pk_token');
   const authH = { Authorization: `Bearer ${token}` };
@@ -161,15 +162,20 @@ function TelegramConfigModal({ onClose }) {
     });
   };
 
-  const configured = recipients.filter(r => r.telegram_chat_id).length;
-  const filtered   = recipients.filter(r => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (r.EMPNAME   || '').toLowerCase().includes(q) ||
-           (r.Branch    || '').toLowerCase().includes(q) ||
-           (r.State     || '').toLowerCase().includes(q) ||
-           (r.Story_Type|| '').toLowerCase().includes(q);
-  });
+  const joined    = recipients.filter(r => r.telegram_chat_id);
+  const pending   = recipients.filter(r => !r.telegram_chat_id);
+  const configured = joined.length;
+
+  const filtered = recipients
+    .filter(r => filterTab === 'joined' ? r.telegram_chat_id : filterTab === 'pending' ? !r.telegram_chat_id : true)
+    .filter(r => {
+      if (!search) return true;
+      const q = search.toLowerCase();
+      return (r.EMPNAME   || '').toLowerCase().includes(q) ||
+             (r.Branch    || '').toLowerCase().includes(q) ||
+             (r.State     || '').toLowerCase().includes(q) ||
+             (r.Story_Type|| '').toLowerCase().includes(q);
+    });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -235,20 +241,72 @@ function TelegramConfigModal({ onClose }) {
             </div>
           </div>
 
-          {/* ── Search + stats ── */}
-          {!loading && recipients.length > 0 && (
-            <div className="flex items-center gap-3 mb-3">
-              <input className="input py-1.5 text-sm flex-1"
-                placeholder="Search name, branch, state…"
-                value={search} onChange={e => setSearch(e.target.value)} />
-              <span className="text-xs whitespace-nowrap" style={{ color: 'var(--muted)' }}>
-                <Bell size={12} className="inline mr-1" style={{ color: '#10b981' }} />
-                {configured} / {recipients.length} registered
+          {/* ── Who joined — name chips ── */}
+          {!loading && joined.length > 0 && (
+            <div className="rounded-xl p-3 mb-3" style={{ background: '#10b98112', border: '1px solid #10b98130' }}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold" style={{ color: '#10b981' }}>
+                  ✅ {joined.length} employee{joined.length > 1 ? 's' : ''} joined the bot
+                </span>
+                <button onClick={() => loadRecipients(true)}
+                  className="btn-ghost p-1 rounded-lg" title="Refresh">
+                  <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {joined.map(r => (
+                  <span key={r.pan_no}
+                    className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium"
+                    style={{ background: '#10b98120', color: '#10b981', border: '1px solid #10b98140' }}>
+                    <Bell size={10} />
+                    {r.EMPNAME}
+                    <span className="opacity-60">· {r.Branch}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!loading && pending.length > 0 && (
+            <div className="rounded-xl p-3 mb-3" style={{ background: '#C9A22712', border: '1px solid #C9A22730' }}>
+              <span className="text-xs font-bold" style={{ color: '#C9A227' }}>
+                ⏳ {pending.length} employee{pending.length > 1 ? 's' : ''} yet to join
               </span>
-              <button onClick={() => loadRecipients(true)}
-                className="btn-ghost p-1.5 rounded-lg" title="Refresh">
-                <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-              </button>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {pending.map(r => (
+                  <span key={r.pan_no}
+                    className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs"
+                    style={{ background: '#C9A22718', color: '#C9A227', border: '1px solid #C9A22730' }}>
+                    <BellOff size={10} />
+                    {r.EMPNAME}
+                    <span className="opacity-60">· {r.Branch}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Filter tabs + Search ── */}
+          {!loading && recipients.length > 0 && (
+            <div className="flex items-center gap-2 mb-3 flex-wrap">
+              {[
+                { id: 'all',     label: `All (${recipients.length})` },
+                { id: 'joined',  label: `✅ Joined (${joined.length})` },
+                { id: 'pending', label: `⏳ Pending (${pending.length})` },
+              ].map(tab => (
+                <button key={tab.id} onClick={() => setFilterTab(tab.id)}
+                  className="text-xs px-3 py-1.5 rounded-lg font-medium transition"
+                  style={{
+                    background: filterTab === tab.id ? 'var(--brand)' : 'var(--bg)',
+                    color:      filterTab === tab.id ? '#fff' : 'var(--muted)',
+                    border:     `1px solid ${filterTab === tab.id ? 'var(--brand)' : 'var(--border)'}`,
+                  }}>
+                  {tab.label}
+                </button>
+              ))}
+              <input className="input py-1.5 text-xs flex-1 min-w-[140px]"
+                placeholder="Search name, branch…"
+                value={search} onChange={e => setSearch(e.target.value)} />
             </div>
           )}
         </div>
