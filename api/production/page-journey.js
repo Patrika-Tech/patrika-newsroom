@@ -143,7 +143,7 @@ module.exports = async function handler(req, res) {
           const total_versions  = versions.length;
 
           return {
-            page_no,
+            page_no: p.page_no,
             versions,
             first_upload,
             last_upload,
