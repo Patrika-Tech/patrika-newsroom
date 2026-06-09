@@ -18,8 +18,14 @@ require('dotenv').config();
 const express    = require('express');
 const path       = require('path');
 const app        = express();
+
+// ── Telegram bot (long polling) ────────────────────────────────────────────────
+const botPoller  = require('./api/telegram/poller');
+botPoller.start();   // starts only if TELEGRAM_BOT_TOKEN is set
+
+// ── Cron: 8 AM delay report ───────────────────────────────────────────────────
 const delayReport = require('./api/cron/delay-report');
-delayReport.register();   // schedule 8 AM IST daily Telegram delay report
+delayReport.register();
 
 // ── Body parsing ──────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
@@ -70,6 +76,9 @@ app.all('/api/alerts/send-telegram',  h('./api/alerts/send-telegram'));
 app.all('/api/alerts/telegram-config',h('./api/alerts/telegram-config'));
 app.all('/api/alerts/telegram-test',  h('./api/alerts/telegram-test'));
 app.all('/api/alerts',                h('./api/alerts'));
+
+// ── Telegram bot ──────────────────────────────────────────────────────────────
+app.all('/api/telegram/bot-info',     h('./api/telegram/bot-info'));
 
 // ── HR ────────────────────────────────────────────────────────────────────────
 app.post('/api/hr/parse-cv',          require('./api/hr/parse-cv'));   // multipart — no h() wrapper

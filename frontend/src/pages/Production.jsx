@@ -81,29 +81,61 @@ function DelayTooltip({ active, payload }) {
 
 // ── Telegram config modal ──────────────────────────────────────────────────────
 function TelegramConfigModal({ onClose }) {
-  const [recipients, setRecipients] = useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [fetchError, setFetchError] = useState('');
-  const [saving,     setSaving]     = useState(null);
-  const [edits,      setEdits]      = useState({});
-  const [search,     setSearch]     = useState('');
+  const [recipients,  setRecipients]  = useState([]);
+  const [botInfo,     setBotInfo]     = useState(null);
+  const [loading,     setLoading]     = useState(true);
+  const [refreshing,  setRefreshing]  = useState(false);
+  const [fetchError,  setFetchError]  = useState('');
+  const [saving,      setSaving]      = useState(null);
+  const [edits,       setEdits]       = useState({});
+  const [search,      setSearch]      = useState('');
+  const [copied,      setCopied]      = useState(false);
 
-  useEffect(() => {
-    fetch('/api/production/delay-report', {
-      headers: { Authorization: `Bearer ${localStorage.getItem('pk_token')}` },
-    })
+  const token = localStorage.getItem('pk_token');
+  const authH = { Authorization: `Bearer ${token}` };
+
+  const loadRecipients = (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true); else setLoading(true);
+    setFetchError('');
+    fetch('/api/production/delay-report', { headers: authH })
       .then(r => {
         if (!r.ok) return r.json().then(e => { throw new Error(e.error || `HTTP ${r.status}`); });
         return r.json();
       })
       .then(d => {
-        setRecipients(d.recipients || []);
-        const init = {};
-        (d.recipients || []).forEach(r => { init[r.pan_no] = r.telegram_chat_id || ''; });
-        setEdits(init);
+        const list = d.recipients || [];
+        setRecipients(list);
+        // Only reset edits on first load; on refresh keep unsaved edits
+        if (!isRefresh) {
+          const init = {};
+          list.forEach(r => { init[r.pan_no] = r.telegram_chat_id || ''; });
+          setEdits(init);
+        } else {
+          // Merge: update saved values from server but keep unsaved edits
+          setEdits(prev => {
+            const next = { ...prev };
+            list.forEach(r => {
+              // If user hasn't typed anything different, sync from server
+              if ((prev[r.pan_no] || '') === (r.telegram_chat_id || '') ||
+                  prev[r.pan_no] === undefined) {
+                next[r.pan_no] = r.telegram_chat_id || '';
+              }
+            });
+            return next;
+          });
+        }
       })
       .catch(e => setFetchError(e.message))
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); setRefreshing(false); });
+  };
+
+  // Fetch bot info (username / link)
+  useEffect(() => {
+    fetch('/api/telegram/bot-info', { headers: authH })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setBotInfo(d); })
+      .catch(() => {});
+    loadRecipients();
   }, []);
 
   const save = async (pan_no) => {
@@ -111,79 +143,142 @@ function TelegramConfigModal({ onClose }) {
     try {
       await fetch('/api/production/delay-report', {
         method:  'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('pk_token')}` },
+        headers: { 'Content-Type': 'application/json', ...authH },
         body:    JSON.stringify({ pan_no, telegram_chat_id: edits[pan_no] || null }),
       });
-      setRecipients(prev => prev.map(r => r.pan_no === pan_no ? { ...r, telegram_chat_id: edits[pan_no] || null } : r));
+      setRecipients(prev => prev.map(r =>
+        r.pan_no === pan_no ? { ...r, telegram_chat_id: edits[pan_no] || null } : r
+      ));
     } catch (e) { alert('Error: ' + e.message); }
     setSaving(null);
+  };
+
+  const copyLink = () => {
+    if (!botInfo?.bot_link) return;
+    navigator.clipboard.writeText(botInfo.bot_link).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
   };
 
   const configured = recipients.filter(r => r.telegram_chat_id).length;
   const filtered   = recipients.filter(r => {
     if (!search) return true;
     const q = search.toLowerCase();
-    return (r.EMPNAME  || '').toLowerCase().includes(q) ||
-           (r.Branch   || '').toLowerCase().includes(q) ||
-           (r.State    || '').toLowerCase().includes(q) ||
-           (r.Story_Type||'').toLowerCase().includes(q);
+    return (r.EMPNAME   || '').toLowerCase().includes(q) ||
+           (r.Branch    || '').toLowerCase().includes(q) ||
+           (r.State     || '').toLowerCase().includes(q) ||
+           (r.Story_Type|| '').toLowerCase().includes(q);
   });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="card relative z-10 max-h-[85vh] w-full max-w-2xl overflow-y-auto p-5">
-        <div className="flex items-start justify-between mb-3">
-          <div>
-            <h3 className="text-base font-bold">Telegram Recipients — Desk Heads & REs</h3>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
-              Enter each person's Telegram Chat ID to receive the 8 AM delay report.
-              Ask them to message <b>@userinfobot</b> on Telegram to get their Chat ID.
-            </p>
+      <div className="card relative z-10 flex flex-col max-h-[90vh] w-full max-w-2xl">
+
+        {/* ── Header ── */}
+        <div className="p-5 pb-0">
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <h3 className="text-base font-bold">📬 Telegram Delay Report Setup</h3>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+                Desk Heads & REs register themselves — you just share the bot link.
+              </p>
+            </div>
+            <button onClick={onClose} className="btn-ghost p-1.5 rounded-lg flex-shrink-0"><X size={18} /></button>
           </div>
-          <button onClick={onClose} className="btn-ghost p-1.5 rounded-lg flex-shrink-0"><X size={18} /></button>
+
+          {/* ── Bot link card ── */}
+          <div className="rounded-xl p-4 mb-4" style={{ background: '#0088cc15', border: '1px solid #0088cc30' }}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-lg">🤖</span>
+              <div>
+                <div className="font-semibold text-sm">
+                  {botInfo?.username ? `@${botInfo.username}` : 'Bot not configured'}
+                </div>
+                <div className="text-xs" style={{ color: 'var(--muted)' }}>
+                  {botInfo?.bot_link || 'Set TELEGRAM_BOT_TOKEN in .env'}
+                </div>
+              </div>
+              {botInfo?.bot_link && (
+                <div className="ml-auto flex gap-2">
+                  <button onClick={copyLink}
+                    className="text-xs px-2.5 py-1 rounded-lg font-medium"
+                    style={{ background: copied ? '#10b981' : '#0088cc', color: '#fff' }}>
+                    {copied ? '✓ Copied' : '📋 Copy Link'}
+                  </button>
+                  <a href={botInfo.bot_link} target="_blank" rel="noopener noreferrer"
+                    className="text-xs px-2.5 py-1 rounded-lg font-medium"
+                    style={{ background: '#0088cc', color: '#fff' }}>
+                    Open Bot ↗
+                  </a>
+                </div>
+              )}
+            </div>
+
+            {/* Employee instructions */}
+            <div className="text-xs rounded-lg p-3" style={{ background: 'var(--bg)' }}>
+              <div className="font-semibold mb-1.5" style={{ color: 'var(--muted)' }}>
+                📋 SEND THIS TO YOUR DESK HEADS & REs:
+              </div>
+              <div className="leading-relaxed" style={{ color: 'var(--text)' }}>
+                {botInfo?.bot_link
+                  ? <>
+                      1. Open Telegram → click this link: <span style={{ color: '#0088cc' }}>{botInfo.bot_link}</span><br />
+                      2. Press <strong>Start</strong><br />
+                      3. Send your <strong>PAN Number / Employee Code</strong><br />
+                      4. Done ✅ — you will receive delay reports at 8 AM
+                    </>
+                  : 'Configure TELEGRAM_BOT_TOKEN in .env to get started.'
+                }
+              </div>
+            </div>
+          </div>
+
+          {/* ── Search + stats ── */}
+          {!loading && recipients.length > 0 && (
+            <div className="flex items-center gap-3 mb-3">
+              <input className="input py-1.5 text-sm flex-1"
+                placeholder="Search name, branch, state…"
+                value={search} onChange={e => setSearch(e.target.value)} />
+              <span className="text-xs whitespace-nowrap" style={{ color: 'var(--muted)' }}>
+                <Bell size={12} className="inline mr-1" style={{ color: '#10b981' }} />
+                {configured} / {recipients.length} registered
+              </span>
+              <button onClick={() => loadRecipients(true)}
+                className="btn-ghost p-1.5 rounded-lg" title="Refresh">
+                <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+              </button>
+            </div>
+          )}
         </div>
 
-        {!loading && recipients.length > 0 && (
-          <div className="flex items-center gap-3 mb-3">
-            <input
-              className="input py-1.5 text-sm flex-1"
-              placeholder="Search name, branch, state…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-            <span className="text-xs whitespace-nowrap" style={{ color: 'var(--muted)' }}>
-              <Bell size={12} className="inline mr-1" style={{ color: '#10b981' }} />
-              {configured} / {recipients.length} configured
-            </span>
-          </div>
-        )}
-
-        {loading ? (
-          <div className="flex justify-center py-10">
-            <Loader2 size={20} className="animate-spin" style={{ color: 'var(--muted)' }} />
-          </div>
-        ) : fetchError ? (
-          <div className="rounded-lg p-4 text-sm" style={{ background: '#d7192015', color: '#d71920' }}>
-            ⚠️ Could not load recipients: <strong>{fetchError}</strong>
-            <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
-              Only Admin and State Head roles can access this configuration.
+        {/* ── Scrollable table ── */}
+        <div className="flex-1 overflow-y-auto px-5 pb-5">
+          {loading ? (
+            <div className="flex justify-center py-10">
+              <Loader2 size={20} className="animate-spin" style={{ color: 'var(--muted)' }} />
+            </div>
+          ) : fetchError ? (
+            <div className="rounded-lg p-4 text-sm" style={{ background: '#d7192015', color: '#d71920' }}>
+              ⚠️ Error: <strong>{fetchError}</strong>
+              <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>
+                Only Admin and State Head roles can configure this.
+              </p>
+            </div>
+          ) : recipients.length === 0 ? (
+            <p className="text-sm py-6 text-center" style={{ color: 'var(--muted)' }}>
+              No Desk Heads or REs found in the employee table.
             </p>
-          </div>
-        ) : recipients.length === 0 ? (
-          <p className="text-sm py-6 text-center" style={{ color: 'var(--muted)' }}>
-            No matching employees found.
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
+          ) : (
             <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs" style={{ color: 'var(--muted)' }}>
-                  <th className="p-2">Name</th>
-                  <th className="p-2">Role</th>
-                  <th className="p-2">Branch · State</th>
-                  <th className="p-2">Telegram Chat ID</th>
-                  <th className="p-2 w-16" />
+              <thead className="sticky top-0" style={{ background: 'var(--surface)' }}>
+                <tr className="text-left text-xs border-b" style={{ color: 'var(--muted)', borderColor: 'var(--border)' }}>
+                  <th className="p-2 pb-3">Name</th>
+                  <th className="p-2 pb-3">Role</th>
+                  <th className="p-2 pb-3">Branch · State</th>
+                  <th className="p-2 pb-3">Status / Chat ID</th>
+                  <th className="p-2 pb-3 w-16" />
                 </tr>
               </thead>
               <tbody>
@@ -201,44 +296,43 @@ function TelegramConfigModal({ onClose }) {
                         </span>
                       </td>
                       <td className="p-2 text-xs" style={{ color: 'var(--muted)' }}>
-                        {r.Branch} · {r.State}
+                        {r.Branch}<br />{r.State}
                       </td>
                       <td className="p-2">
-                        <div className="flex items-center gap-1.5">
-                          {hasTg
-                            ? <Bell    size={12} style={{ color: '#10b981', flexShrink: 0 }} />
-                            : <BellOff size={12} style={{ color: 'var(--muted)', flexShrink: 0 }} />}
-                          <input
-                            className="input py-0.5 text-xs w-32"
-                            placeholder="e.g. 123456789"
-                            value={edits[r.pan_no] ?? ''}
-                            onChange={e => setEdits(prev => ({ ...prev, [r.pan_no]: e.target.value }))}
-                          />
-                        </div>
+                        {hasTg ? (
+                          <div className="flex items-center gap-1.5">
+                            <Bell size={12} style={{ color: '#10b981', flexShrink: 0 }} />
+                            <input className="input py-0.5 text-xs w-28"
+                              value={edits[r.pan_no] ?? ''}
+                              onChange={e => setEdits(p => ({ ...p, [r.pan_no]: e.target.value }))} />
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <BellOff size={12} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+                            <span className="text-xs" style={{ color: 'var(--muted)' }}>
+                              Not registered
+                            </span>
+                          </div>
+                        )}
                       </td>
                       <td className="p-2">
-                        <button
-                          onClick={() => save(r.pan_no)}
-                          disabled={saving === r.pan_no || !edited}
-                          className="text-xs px-2 py-1 rounded font-medium flex items-center gap-1"
-                          style={{
-                            background: edited ? 'var(--brand)' : 'var(--bg)',
-                            color:      edited ? '#fff' : 'var(--muted)',
-                          }}
-                        >
-                          {saving === r.pan_no
-                            ? <Loader2 size={11} className="animate-spin" />
-                            : <Save size={11} />}
-                          Save
-                        </button>
+                        {hasTg && (
+                          <button onClick={() => save(r.pan_no)}
+                            disabled={saving === r.pan_no || !edited}
+                            className="text-xs px-2 py-1 rounded font-medium flex items-center gap-1"
+                            style={{ background: edited ? 'var(--brand)' : 'var(--bg)', color: edited ? '#fff' : 'var(--muted)' }}>
+                            {saving === r.pan_no ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+                            Save
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
