@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
   CartesianGrid, Cell, ReferenceLine,
@@ -6,7 +6,8 @@ import {
 import {
   CheckCircle2, AlertTriangle, Clock, TrendingUp, Download,
   RefreshCw, Loader2, ChevronLeft, ChevronRight, AlarmClock,
-  Send, Bell, BellOff, X, Save,
+  Send, Bell, BellOff, X, Save, FileStack, LayoutList,
+  ChevronDown, ChevronUp, GitBranch,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext.jsx';
@@ -195,14 +196,15 @@ function TelegramConfigModal({ onClose }) {
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function Production() {
   const { t } = useApp();
+  const [activeTab,  setActiveTab]  = useState('monitor'); // 'monitor' | 'journey'
   const [date,       setDate]       = useState(today());
   const [data,       setData]       = useState(null);
   const [loading,    setLoading]    = useState(true);
   const [region,     setRegion]     = useState('ALL'); // ALL | RAJ | MPCG
   const [search,     setSearch]     = useState('');
-  const [sending,    setSending]    = useState(false);   // Telegram send state
-  const [sendResult, setSendResult] = useState(null);    // { sent, failed, noRecipients }
-  const [showConfig, setShowConfig] = useState(false);   // Telegram config modal
+  const [sending,    setSending]    = useState(false);
+  const [sendResult, setSendResult] = useState(null);
+  const [showConfig, setShowConfig] = useState(false);
 
   const load = (d) => {
     setLoading(true);
@@ -298,6 +300,30 @@ export default function Production() {
         title={t('nav.production')}
         subtitle="Branch-wise edition release · schedule vs actual · delay monitoring"
       />
+
+      {/* ── Tab bar ──────────────────────────────────────────────────────── */}
+      <div className="flex gap-1 mb-4 border-b" style={{ borderColor: 'var(--border)' }}>
+        {[
+          { id: 'monitor', label: 'Production Monitor', icon: LayoutList },
+          { id: 'journey', label: 'Page Journey',       icon: GitBranch  },
+        ].map(({ id, label, icon: Icon }) => (
+          <button key={id} onClick={() => setActiveTab(id)}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition -mb-px ${
+              activeTab === id
+                ? 'border-[var(--brand)] text-[var(--brand)]'
+                : 'border-transparent hover:border-gray-300'
+            }`}
+            style={activeTab !== id ? { color: 'var(--muted)' } : {}}>
+            <Icon size={15} />{label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Page Journey tab ─────────────────────────────────────────────── */}
+      {activeTab === 'journey' && <PageJourneyTab date={date} setDate={setDate} shiftDate={shiftDate} />}
+
+      {/* ── Production Monitor tab ───────────────────────────────────────── */}
+      {activeTab !== 'journey' && <>
 
       {/* ── Date nav + region filter ─────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3 mb-5">
@@ -504,6 +530,304 @@ export default function Production() {
       )}
 
       {showConfig && <TelegramConfigModal onClose={() => setShowConfig(false)} />}
+
+      </> /* end Production Monitor tab */}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PAGE JOURNEY TAB
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Time display helper
+function fmtT(dt) {
+  if (!dt) return '—';
+  const d = new Date(dt);
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+// Duration helper
+function fmtDur(min) {
+  if (!min || min <= 0) return '—';
+  const h = Math.floor(min / 60), m = min % 60;
+  if (h === 0) return `${m}m`;
+  return `${h}h ${m}m`;
+}
+
+// Revision status config
+function revConfig(maxRev) {
+  if (maxRev === 0) return { color: '#10b981', bg: '#10b98115', label: 'No Rev' };
+  if (maxRev === 1) return { color: '#C9A227', bg: '#C9A22715', label: `${maxRev} Rev` };
+  return { color: '#d71920', bg: '#d7192015', label: `${maxRev} Rev` };
+}
+
+// Inline timeline bar showing page relative to edition's full time range
+function TimelineBar({ firstMs, lastMs, edStart, edEnd, maxRev }) {
+  if (!edStart || !edEnd || edStart === edEnd) return null;
+  const total  = edEnd - edStart;
+  const left   = ((firstMs - edStart) / total) * 100;
+  const width  = Math.max(((lastMs - firstMs) / total) * 100, 0.5);
+  const { color } = revConfig(maxRev);
+  return (
+    <div className="relative h-4 rounded" style={{ background: 'var(--bg)', minWidth: 120 }}>
+      <div className="absolute top-0 h-4 rounded"
+        style={{ left: `${left}%`, width: `${width}%`, background: color, opacity: 0.8, minWidth: 4 }} />
+    </div>
+  );
+}
+
+// Expandable row showing all versions of a page
+function PageRow({ page, edStart, edEnd }) {
+  const [open, setOpen] = useState(false);
+  const cfg = revConfig(page.max_rev);
+  const firstMs = new Date(page.first_upload).getTime();
+  const lastMs  = new Date(page.last_upload).getTime();
+
+  return (
+    <>
+      <tr
+        className="border-t hover:bg-black/5 dark:hover:bg-white/5 transition cursor-pointer"
+        style={{ borderColor: 'var(--border)' }}
+        onClick={() => setOpen(o => !o)}
+      >
+        {/* Page no */}
+        <td className="p-2 text-center">
+          <span className="inline-block w-8 h-8 rounded-lg text-sm font-bold leading-8 text-center"
+            style={{ background: cfg.bg, color: cfg.color }}>
+            {page.page_no}
+          </span>
+        </td>
+        {/* First upload */}
+        <td className="p-2 text-center font-mono text-sm font-semibold">{fmtT(page.first_upload)}</td>
+        {/* Last upload */}
+        <td className="p-2 text-center font-mono text-sm" style={{ color: page.max_rev > 0 ? cfg.color : 'inherit', fontWeight: page.max_rev > 0 ? 700 : 400 }}>
+          {fmtT(page.last_upload)}
+        </td>
+        {/* Duration */}
+        <td className="p-2 text-center text-xs" style={{ color: 'var(--muted)' }}>{fmtDur(page.duration_min)}</td>
+        {/* Revisions */}
+        <td className="p-2 text-center">
+          <span className="inline-block rounded px-2 py-0.5 text-xs font-bold"
+            style={{ background: cfg.bg, color: cfg.color }}>
+            {cfg.label}
+          </span>
+        </td>
+        {/* Uploads */}
+        <td className="p-2 text-center text-xs" style={{ color: 'var(--muted)' }}>{page.total_uploads}</td>
+        {/* Timeline */}
+        <td className="p-2 min-w-[140px]">
+          <TimelineBar firstMs={firstMs} lastMs={lastMs} edStart={edStart} edEnd={edEnd} maxRev={page.max_rev} />
+        </td>
+        {/* Expand */}
+        <td className="p-2 text-center">
+          {open ? <ChevronUp size={14} style={{ color: 'var(--muted)' }} /> : <ChevronDown size={14} style={{ color: 'var(--muted)' }} />}
+        </td>
+      </tr>
+
+      {/* Expanded version detail */}
+      {open && page.versions.map((v, vi) => (
+        <tr key={vi} style={{ background: 'var(--bg)' }}>
+          <td className="pl-6 pr-2 py-1.5 text-center" style={{ color: 'var(--muted)', fontSize: 11 }}>↳</td>
+          <td className="p-1.5 text-center font-mono text-xs font-semibold">{fmtT(v.first_time)}</td>
+          <td className="p-1.5 text-center font-mono text-xs"
+            style={{ color: v.rev_no > 0 ? '#d71920' : 'var(--muted)' }}>
+            {fmtT(v.last_time)}
+          </td>
+          <td className="p-1.5 text-center" colSpan={2}>
+            <span className="inline-block rounded px-2 py-0.5 text-xs font-semibold"
+              style={{
+                background: v.rev_no === 0 ? '#10b98115' : '#d7192015',
+                color:      v.rev_no === 0 ? '#10b981'   : '#d71920',
+              }}>
+              {v.label}
+            </span>
+          </td>
+          <td className="p-1.5 text-center text-xs" style={{ color: 'var(--muted)' }}>{v.upload_count}×</td>
+          <td className="p-1.5" colSpan={2}>
+            <span className="text-xs truncate block max-w-[200px]" style={{ color: 'var(--muted)' }}
+              title={v.filename}>{v.filename}</span>
+          </td>
+        </tr>
+      ))}
+    </>
+  );
+}
+
+function PageJourneyTab({ date, setDate, shiftDate }) {
+  const [journeyData, setJourneyData] = useState(null);
+  const [loading,     setLoading]     = useState(false);
+  const [activeEd,    setActiveEd]    = useState(null);   // selected edition code
+  const [sortBy,      setSortBy]      = useState('page'); // 'page' | 'first' | 'last' | 'rev'
+
+  const load = useCallback((d) => {
+    setLoading(true);
+    api.pageJourney(d)
+      .then(data => {
+        setJourneyData(data);
+        if (data.editions?.length) setActiveEd(data.editions[0].code);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(date); }, [date]);
+
+  const editions  = journeyData?.editions || [];
+  const activeEdn = editions.find(e => e.code === activeEd) || editions[0];
+
+  // Sort pages
+  const sortedPages = useMemo(() => {
+    if (!activeEdn?.pages) return [];
+    const pages = [...activeEdn.pages];
+    if (sortBy === 'first') return pages.sort((a, b) => new Date(a.first_upload) - new Date(b.first_upload));
+    if (sortBy === 'last')  return pages.sort((a, b) => new Date(b.last_upload)  - new Date(a.last_upload));
+    if (sortBy === 'rev')   return pages.sort((a, b) => b.max_rev - a.max_rev || b.duration_min - a.duration_min);
+    return pages.sort((a, b) => a.page_no - b.page_no); // default: page number
+  }, [activeEdn, sortBy]);
+
+  const edStart = activeEdn ? new Date(activeEdn.edition_first).getTime() : 0;
+  const edEnd   = activeEdn ? new Date(activeEdn.edition_last).getTime()  : 0;
+
+  // Excel download for page journey
+  const downloadJourney = () => {
+    if (!activeEdn) return;
+    const rows = [];
+    activeEdn.pages.forEach(p => {
+      p.versions.forEach(v => {
+        rows.push({
+          'Page No':     p.page_no,
+          'Version':     v.label,
+          'First Upload': fmtT(v.first_time),
+          'Last Upload':  fmtT(v.last_time),
+          'Uploads':     v.upload_count,
+          'Filename':    v.filename,
+        });
+      });
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = Object.keys(rows[0]||{}).map(k => ({ wch: Math.max(k.length, 16) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'PageJourney');
+    XLSX.writeFile(wb, `page_journey_${activeEdn.code}_${date}.xlsx`);
+  };
+
+  return (
+    <div>
+      {/* Date nav */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="flex items-center gap-1">
+          <button onClick={() => shiftDate(-1)} className="btn-ghost p-1.5"><ChevronLeft size={16} /></button>
+          <input type="date" value={date} max={today()}
+            onChange={e => setDate(e.target.value)}
+            className="input py-1.5 text-sm font-semibold" />
+          <button onClick={() => shiftDate(1)} className="btn-ghost p-1.5" disabled={date >= today()}><ChevronRight size={16} /></button>
+        </div>
+        <button onClick={() => load(date)} className="btn-ghost p-1.5" title="Refresh">
+          <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+        </button>
+        {activeEdn && (
+          <button onClick={downloadJourney} className="btn-ghost flex items-center gap-1.5 text-sm ml-auto">
+            <Download size={14} /> Excel
+          </button>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-24 gap-2" style={{ color: 'var(--muted)' }}>
+          <Loader2 size={20} className="animate-spin" /> Loading page journey…
+        </div>
+      ) : !editions.length ? (
+        <div className="flex flex-col items-center justify-center py-24 gap-2" style={{ color: 'var(--muted)' }}>
+          <FileStack size={32} />
+          <p className="text-sm">No page data found for <strong>{date}</strong></p>
+        </div>
+      ) : (
+        <>
+          {/* Edition tabs */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            {editions.map(ed => (
+              <button key={ed.code} onClick={() => setActiveEd(ed.code)}
+                className="rounded-lg px-3 py-2 text-sm transition"
+                style={{
+                  background: activeEd === ed.code ? 'var(--brand)' : 'var(--bg)',
+                  color:      activeEd === ed.code ? '#fff' : 'inherit',
+                  border:     `1px solid ${activeEd === ed.code ? 'var(--brand)' : 'var(--border)'}`,
+                }}>
+                <span className="font-semibold">{ed.code}</span>
+                <span className="ml-2 text-xs opacity-70">
+                  {ed.total_pages}p · {ed.revised_pages > 0 ? `${ed.revised_pages} rev` : '✓'}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {activeEdn && (
+            <>
+              {/* Summary tiles */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-5 mb-4">
+                {[
+                  { label: 'Total Pages',    value: activeEdn.total_pages,    color: '#3b82f6' },
+                  { label: 'Pages Revised',  value: activeEdn.revised_pages,  color: activeEdn.revised_pages > 0 ? '#d71920' : '#10b981' },
+                  { label: 'First Upload',   value: fmtT(activeEdn.edition_first), color: '#10b981' },
+                  { label: 'Last Upload',    value: fmtT(activeEdn.edition_last),  color: '#C9A227' },
+                  { label: 'Total Duration', value: fmtDur(activeEdn.edition_duration), color: '#8b5cf6' },
+                ].map(({ label, value, color }) => (
+                  <div key={label} className="card p-4">
+                    <div className="text-2xl font-bold" style={{ color }}>{value || '—'}</div>
+                    <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Timeline legend + sort */}
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--muted)' }}>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded" style={{ background: '#10b981' }} />No Revision</span>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded" style={{ background: '#C9A227' }} />1 Revision</span>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded" style={{ background: '#d71920' }} />2+ Revisions</span>
+                  <span className="ml-2">Timeline: {fmtT(activeEdn.edition_first)} → {fmtT(activeEdn.edition_last)}</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <span style={{ color: 'var(--muted)' }}>Sort:</span>
+                  {[['page','Page No'],['first','First Upload'],['last','Last Upload'],['rev','Most Revised']].map(([v,l]) => (
+                    <button key={v} onClick={() => setSortBy(v)}
+                      className="px-2 py-1 rounded font-medium"
+                      style={{
+                        background: sortBy === v ? 'var(--brand)' : 'var(--bg)',
+                        color:      sortBy === v ? '#fff' : 'var(--muted)',
+                      }}>{l}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Pages table */}
+              <SectionCard title={`Page Journey — ${activeEdn.code} (${sortedPages.length} pages)`}>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs" style={{ color: 'var(--muted)' }}>
+                        <th className="p-2 text-center w-12">Page</th>
+                        <th className="p-2 text-center">First Upload</th>
+                        <th className="p-2 text-center">Last Upload</th>
+                        <th className="p-2 text-center">Duration</th>
+                        <th className="p-2 text-center">Revision</th>
+                        <th className="p-2 text-center">Uploads</th>
+                        <th className="p-2">Timeline →</th>
+                        <th className="p-2 w-8" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedPages.map(p => (
+                        <PageRow key={p.page_no} page={p} edStart={edStart} edEnd={edEnd} />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </SectionCard>
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 }

@@ -52,7 +52,8 @@ app.all('/api/dashboard',             h('./api/dashboard'));
 // ── Editorial / Production / Pages / Reports ──────────────────────────────────
 app.all('/api/editorial/feeds',       h('./api/editorial/feeds'));   // must be before /api/editorial
 app.all('/api/editorial',             h('./api/editorial'));
-app.all('/api/production/delay-report', h('./api/production/delay-report'));  // before /api/production
+app.all('/api/production/delay-report', h('./api/production/delay-report'));
+app.all('/api/production/page-journey', h('./api/production/page-journey'));
 app.all('/api/production',              h('./api/production'));
 app.all('/api/pages',                 h('./api/pages'));
 app.all('/api/reports',               h('./api/reports'));

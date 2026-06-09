@@ -65,6 +65,7 @@ export const api = {
   },
   editorialFeeds: () => withFallback('/editorial/feeds', { feeds: [], fetchedAt: '' }),
   production:   (date)    => withFallback(`/production?date=${date}`,         { date, summary: { total: 0, onTime: 0, delayed: 0, avgDelay: 0, maxDelay: 0 }, editions: [] }),
+  pageJourney:  (date)    => withFallback(`/production/page-journey?date=${date}`, { date, editions: [] }),
   pages: (date, state, branch) => {
     const p = new URLSearchParams({ date });
     if (state  && state  !== 'All') p.set('state',  state);
