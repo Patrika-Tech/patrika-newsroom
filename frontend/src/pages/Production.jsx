@@ -15,7 +15,11 @@ import { api } from '../api/client.js';
 import { PageHeader, SectionCard, Badge } from '../components/UI.jsx';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const today = () => new Date().toISOString().slice(0, 10);
+// Use LOCAL date (important for IST — UTC date can be 1 day behind)
+const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+};
 
 function fmtTime(dt) {
   if (!dt) return '—';
@@ -657,16 +661,26 @@ function PageRow({ page, edStart, edEnd }) {
 function PageJourneyTab({ date, setDate, shiftDate }) {
   const [journeyData, setJourneyData] = useState(null);
   const [loading,     setLoading]     = useState(false);
-  const [activeEd,    setActiveEd]    = useState(null);   // selected edition code
-  const [sortBy,      setSortBy]      = useState('page'); // 'page' | 'first' | 'last' | 'rev'
+  const [error,       setError]       = useState('');
+  const [activeEd,    setActiveEd]    = useState(null);
+  const [sortBy,      setSortBy]      = useState('page');
 
   const load = useCallback((d) => {
-    setLoading(true);
-    api.pageJourney(d)
+    setLoading(true); setError('');
+    const token = localStorage.getItem('pk_token');
+    fetch(`/api/production/page-journey?date=${d}`, {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    })
+      .then(r => {
+        if (!r.ok) return r.json().then(e => { throw new Error(e.error || `HTTP ${r.status}`); });
+        return r.json();
+      })
       .then(data => {
         setJourneyData(data);
         if (data.editions?.length) setActiveEd(data.editions[0].code);
+        else setActiveEd(null);
       })
+      .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
 
@@ -736,10 +750,15 @@ function PageJourneyTab({ date, setDate, shiftDate }) {
         <div className="flex items-center justify-center py-24 gap-2" style={{ color: 'var(--muted)' }}>
           <Loader2 size={20} className="animate-spin" /> Loading page journey…
         </div>
+      ) : error ? (
+        <div className="rounded-xl p-4 text-sm" style={{ background: '#d7192015', color: '#d71920' }}>
+          ⚠️ Error: {error}
+        </div>
       ) : !editions.length ? (
         <div className="flex flex-col items-center justify-center py-24 gap-2" style={{ color: 'var(--muted)' }}>
           <FileStack size={32} />
           <p className="text-sm">No page data found for <strong>{date}</strong></p>
+          <p className="text-xs">Check that GMG files were uploaded for this date.</p>
         </div>
       ) : (
         <>
