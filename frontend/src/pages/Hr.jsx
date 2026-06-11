@@ -5,7 +5,7 @@ import {
   CartesianGrid, Cell, PieChart, Pie,
 } from 'recharts';
 import {
-  X, CalendarClock, Award, AlertTriangle, Users, UserCheck, UserX,
+  X, CalendarClock, Users, UserCheck, UserX,
   Building2, Save, Loader2, Download, Plus, Upload, CheckCircle2,
   Clock, Star, BarChart2, ShieldCheck, FileText, Briefcase, Trash2,
   ChevronDown, RefreshCw, Camera, PenLine, Monitor,
@@ -358,35 +358,6 @@ function OverviewTab({ emps, filtered, rets, loading, ageBuckets, deptBuckets,
         </div>
       </SectionCard>
 
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
-        <SectionCard title="Notice / Appreciation">
-          <div className="space-y-2 text-sm">
-            <div className="flex items-center gap-2 rounded-lg p-2.5" style={{ background: 'var(--bg)' }}>
-              <Award size={16} className="text-patrika-gold" /> Appreciation logged: A. Khan — 9 front-page stories this week
-            </div>
-            <div className="flex items-center gap-2 rounded-lg p-2.5" style={{ background: 'var(--bg)' }}>
-              <AlertTriangle size={16} style={{ color: 'var(--brand)' }} /> Warning history: 1 SLA breach (Kota desk)
-            </div>
-          </div>
-        </SectionCard>
-        <SectionCard title="Team Assignments">
-          <div className="space-y-1.5 text-sm">
-            {[
-              { label: 'Top Team',  key: 'is_top_team' },
-              { label: 'QC Team',   key: 'is_qc_team' },
-              { label: 'Data Team', key: 'is_data_team' },
-              { label: 'TV/Multi',  key: 'is_tv_multi_team' },
-            ].map(({ label, key }) => {
-              const count = emps.filter(e => e[key] == 1).length;
-              return (
-                <div key={key} className="flex items-center justify-between rounded-lg px-3 py-2" style={{ background: 'var(--bg)' }}>
-                  <span>{label}</span><Badge tone="med">{count} members</Badge>
-                </div>
-              );
-            })}
-          </div>
-        </SectionCard>
-      </div>
     </div>
   );
 }
