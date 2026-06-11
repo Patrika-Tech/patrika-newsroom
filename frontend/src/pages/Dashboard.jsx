@@ -195,12 +195,13 @@ export default function Dashboard() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
                   <XAxis
                     type="number" stroke="var(--muted)" fontSize={11}
-                    label={{ value: 'minutes', position: 'insideRight', offset: -2, fontSize: 10, fill: 'var(--muted)' }}
+                    tickFormatter={v => { const a = Math.abs(v); return `${Math.floor(a/60)}:${String(a%60).padStart(2,'0')}`; }}
+                    label={{ value: 'hh:mm', position: 'insideRight', offset: -2, fontSize: 10, fill: 'var(--muted)' }}
                   />
                   <YAxis type="category" dataKey="edition" stroke="var(--muted)" fontSize={11} width={86} />
                   <Tooltip
                     contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12 }}
-                    formatter={(v) => [`${v > 0 ? '+' : ''}${v} min`, 'Delay']}
+                    formatter={(v, _n, props) => [props.payload?.delay_hhmm || `${v > 0 ? '+' : ''}${v}`, 'Delay']}
                   />
                   <Bar dataKey="delay" radius={[0, 4, 4, 0]} barSize={14}>
                     {editionDelays.map((e, i) => (
@@ -217,10 +218,10 @@ export default function Dashboard() {
                   <span className="h-2.5 w-2.5 rounded-sm" style={{ background: '#16a34a' }} /> On Time (≤0 min)
                 </span>
                 <span className="flex items-center gap-1">
-                  <span className="h-2.5 w-2.5 rounded-sm" style={{ background: '#C9A227' }} /> Warn (1–30 min)
+                  <span className="h-2.5 w-2.5 rounded-sm" style={{ background: '#C9A227' }} /> Warn (00:01–00:30)
                 </span>
                 <span className="flex items-center gap-1">
-                  <span className="h-2.5 w-2.5 rounded-sm" style={{ background: '#d71920' }} /> Late (&gt;30 min)
+                  <span className="h-2.5 w-2.5 rounded-sm" style={{ background: '#d71920' }} /> Late (&gt;00:30)
                 </span>
               </div>
             </>

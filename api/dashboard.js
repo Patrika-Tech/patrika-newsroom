@@ -22,6 +22,29 @@ const TABLE = process.env.MYSQL_TABLE_EMPLOYEES || 'user';
 const STATE_NORM = { rajasthan:'raj','raj':'raj', mp:'mp','madhya pradesh':'mp', cg:'cg', chhattisgarh:'cg', metro:'metro' };
 const normState = s => STATE_NORM[(s||'').toLowerCase().trim()] || (s||'').toLowerCase().trim();
 
+// Hidden editions (same as production views)
+const HIDDEN_EDITIONS = ['nt jaipur city', 'nt jaipur dak'];
+const isHidden = name => HIDDEN_EDITIONS.includes((name || '').toLowerCase().trim());
+
+// Walk release timestamps DESC; return first with delay < 240 min, else earliest
+function pickReleaseTime(allTimesStr, schedMs) {
+  if (!allTimesStr) return null;
+  const parts = String(allTimesStr).split('|').map(s => s.trim()).filter(Boolean);
+  for (const t of parts) {
+    const ms = new Date(t).getTime();
+    if (isNaN(ms)) continue;
+    if (Math.round((ms - schedMs) / 60000) < 240) return { ms, time: t };
+  }
+  const last = parts[parts.length - 1];
+  return last ? { ms: new Date(last).getTime(), time: last } : null;
+}
+
+function fmtDelay(minutes) {
+  const sign = minutes < 0 ? '-' : '+';
+  const abs  = Math.abs(Math.round(minutes));
+  return `${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`;
+}
+
 module.exports = async function handler(req, res) {
   setCors(res);
   if (handleOptions(req, res)) return;
@@ -140,7 +163,8 @@ module.exports = async function handler(req, res) {
 
       // 11. Yesterday's GMG releases — Rajasthan
       query(`SELECT UPPER(SUBSTRING_INDEX(SUBSTRING_INDEX(input_file,'-',2),'-',-1)) AS code,
-                    MAX(date_time_pdf) AS release_time
+                    MAX(date_time_pdf) AS release_time,
+                    GROUP_CONCAT(DISTINCT date_time_pdf ORDER BY date_time_pdf DESC SEPARATOR '|') AS all_release_times
              FROM gmg_raj
              WHERE input_file REGEXP '^[0-9]{8}-' AND date_time_pdf IS NOT NULL
                AND STR_TO_DATE(LEFT(input_file,8),'%d%m%Y') = ?
@@ -148,7 +172,8 @@ module.exports = async function handler(req, res) {
 
       // 12. Yesterday's GMG releases — MP/CG
       query(`SELECT UPPER(SUBSTRING_INDEX(SUBSTRING_INDEX(input_file,'-',2),'-',-1)) AS code,
-                    MAX(date_time_pdf) AS release_time
+                    MAX(date_time_pdf) AS release_time,
+                    GROUP_CONCAT(DISTINCT date_time_pdf ORDER BY date_time_pdf DESC SEPARATOR '|') AS all_release_times
              FROM gmg_mpcg
              WHERE input_file REGEXP '^[0-9]{8}-' AND date_time_pdf IS NOT NULL
                AND STR_TO_DATE(LEFT(input_file,8),'%d%m%Y') = ?
@@ -166,6 +191,8 @@ module.exports = async function handler(req, res) {
       .map(r => {
         const sched = schedMap[r.code];
         if (!sched) return null;
+        // Skip hidden editions
+        if (isHidden(sched.edition_name)) return null;
         // Filter by state/branch if applicable
         if (filterState && normState(sched.state) !== normState(filterState)) return null;
         if (filterBranch && (sched.unit || '').toLowerCase() !== filterBranch.toLowerCase()) return null;
@@ -174,12 +201,24 @@ module.exports = async function handler(req, res) {
         const schedDate = new Date(pubDate);
         if (sh >= 12) schedDate.setDate(schedDate.getDate() - 1);
         schedDate.setHours(sh, sm, 0, 0);
-        const delay_minutes = Math.round((new Date(r.release_time) - schedDate) / 60000);
+        const schedMs = schedDate.getTime();
+
+        // Use pickReleaseTime to avoid inflated delays from late re-uploads
+        const maxMs = new Date(r.release_time).getTime();
+        let releaseMs = maxMs;
+        if (Math.round((maxMs - schedMs) / 60000) >= 240) {
+          const best = pickReleaseTime(r.all_release_times, schedMs);
+          if (best && best.ms !== maxMs) releaseMs = best.ms;
+        }
+
+        // Hard cap at 239 min (3h 59m)
+        const delay_minutes = Math.min(Math.round((releaseMs - schedMs) / 60000), 239);
         return {
-          edition: sched.edition_name || sched.unit || r.code,
-          unit:    sched.unit || '',
-          delay:   delay_minutes,
-          status:  delay_minutes <= 0 ? 'ontime' : delay_minutes <= 30 ? 'warn' : 'late',
+          edition:    sched.edition_name || sched.unit || r.code,
+          unit:       sched.unit || '',
+          delay:      delay_minutes,
+          delay_hhmm: fmtDelay(delay_minutes),
+          status:     delay_minutes <= 0 ? 'ontime' : delay_minutes <= 30 ? 'warn' : 'late',
         };
       })
       .filter(Boolean)
