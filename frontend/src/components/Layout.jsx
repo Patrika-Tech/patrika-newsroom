@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, PenLine, Factory, Newspaper, Users, Scale, Archive,
-  Sparkles, Bell, BarChart3, Settings, Menu, X, Moon, Sun, Globe, LogOut, ChevronDown, Lock
+  Sparkles, Bell, BarChart3, Settings, MessageSquare, Menu, X, Moon, Sun, Globe, LogOut, ChevronDown, Lock
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.jsx';
 import { Logo } from './UI.jsx';
@@ -18,6 +18,7 @@ const NAV = [
   { key: 'ai',         to: '/ai',         icon: Sparkles },
   { key: 'alerts',     to: '/alerts',     icon: Bell },
   { key: 'reports',    to: '/reports',    icon: BarChart3 },
+  { key: 'feedback',   to: '/feedback',   icon: MessageSquare },
   { key: 'settings',   to: '/settings',   icon: Settings },
 ];
 

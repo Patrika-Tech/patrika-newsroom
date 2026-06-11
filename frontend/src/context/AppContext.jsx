@@ -17,8 +17,8 @@ export const STATES         = ['All'];
 // ── Nav access per role ────────────────────────────────────────────────────────
 const ACCESS = {
   'Admin':           'all',
-  'State Head':      ['home', 'editorial', 'production', 'pages', 'hr', 'alerts', 'reports', 'settings'],
-  'Regional Editor': ['home', 'editorial', 'production', 'pages', 'hr', 'alerts', 'reports', 'settings'],
+  'State Head':      ['home', 'editorial', 'production', 'pages', 'hr', 'alerts', 'reports', 'settings', 'feedback'],
+  'Regional Editor': ['home', 'editorial', 'production', 'pages', 'hr', 'alerts', 'reports', 'settings', 'feedback'],
   'Legal':           ['legal', 'settings'],
 };
 

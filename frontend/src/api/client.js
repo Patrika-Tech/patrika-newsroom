@@ -50,6 +50,13 @@ export const api = {
   updateUser:  (id, data) => request(`/users/${id}`,  { method: 'PATCH',  body: JSON.stringify(data) }),
   deleteUser:  (id)       => request(`/users/${id}`,  { method: 'DELETE' }),
   syncUsers:   ()         => request('/users/sync',   { method: 'POST' }),
+
+  // ── Feedback ─────────────────────────────────────────────────────────────
+  listFeedback:   ()         => request('/feedback'),
+  createFeedback: (data)     => request('/feedback',       { method: 'POST',   body: JSON.stringify(data) }),
+  updateFeedback: (id, data) => request(`/feedback/${id}`, { method: 'PATCH',  body: JSON.stringify(data) }),
+  deleteFeedback: (id)       => request(`/feedback/${id}`, { method: 'DELETE' }),
+
   dashboard: (state, branch) => {
     const p = new URLSearchParams();
     if (state  && state  !== 'All') p.set('state',  state);

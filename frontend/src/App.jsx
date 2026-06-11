@@ -14,6 +14,7 @@ import AiInsights from './pages/AiInsights.jsx';
 import Alerts from './pages/Alerts.jsx';
 import Reports from './pages/Reports.jsx';
 import Settings from './pages/Settings.jsx';
+import Feedback from './pages/Feedback.jsx';
 
 // ── Error Boundary — shows the crash message instead of blank screen ──────────
 class ErrorBoundary extends Component {
@@ -69,6 +70,7 @@ export default function App() {
         <Route path="/alerts"    element={<Guard accessKey="alerts">     <Alerts />        </Guard>} />
         <Route path="/reports"   element={<Guard accessKey="reports">    <Reports />       </Guard>} />
         <Route path="/settings"  element={<Guard accessKey="settings">   <Settings />      </Guard>} />
+        <Route path="/feedback"  element={<Guard accessKey="feedback">   <Feedback />      </Guard>} />
         <Route path="*"          element={<Navigate to="/" replace />} />
       </Routes>
     </ErrorBoundary>

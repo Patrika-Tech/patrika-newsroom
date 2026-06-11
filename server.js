@@ -100,6 +100,10 @@ app.all('/api/hr/sanctioned-posts',   h('./api/hr/sanctioned-posts'));
 app.all('/api/hr/admin-stats',        h('./api/hr/admin-stats'));
 app.all('/api/hr/test-db',            h('./api/hr/test-db'));
 
+// ── Feedback ──────────────────────────────────────────────────────────────────
+app.all('/api/feedback/:id',          h('./api/feedback/[id]'));
+app.all('/api/feedback',              h('./api/feedback'));
+
 // ── AI ────────────────────────────────────────────────────────────────────────
 app.all('/api/ai/assistant',          h('./api/ai/assistant'));
 
