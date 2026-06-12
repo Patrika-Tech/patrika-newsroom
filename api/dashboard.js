@@ -65,10 +65,10 @@ module.exports = async function handler(req, res) {
     const filterState  = state  && state  !== 'All' ? state  : '';
     const filterBranch = branch && branch !== 'All' ? branch : '';
 
-    // ── Date helpers (IST-aware) ──────────────────────────────────────────────
-    const istNow   = d => new Date(d.getTime() + 5.5 * 3600000).toISOString().slice(0, 10);
-    const ydayStr  = istNow(new Date(Date.now() - 864e5));
-    const trend7Str= istNow(new Date(Date.now() - 7 * 864e5)); // 7 days back → 7-day window ending yesterday
+    // ── Date helpers ──────────────────────────────────────────────────────────
+    const toIST   = ms => new Date(ms + 5.5 * 3600000).toISOString().slice(0, 10);
+    const ydayStr  = toIST(Date.now() - 864e5);
+    const trend7Str= toIST(Date.now() - 7 * 864e5);
 
     // ── WHERE helpers ─────────────────────────────────────────────────────────
     const empWhere    = ["(is_emp_working = 1 OR Status = 'Working' OR Status = 'Active')"];
@@ -125,11 +125,11 @@ module.exports = async function handler(req, res) {
              [ydayStr, ...ecmsParams]).catch(() => [{}]),
 
       // 4. 7-day story trend
-      query(`SELECT DATE(entrydate) AS d, SUM(No_Story) AS stories,
+      query(`SELECT DATE_FORMAT(entrydate, '%Y-%m-%d') AS d, SUM(No_Story) AS stories,
                     SUM(No_Photo) AS photos, SUM(Exclusive) AS exclusive
              FROM daily_achievment_count_ecms
              WHERE DATE(entrydate) BETWEEN ? AND ?${ecmsExtra}
-             GROUP BY DATE(entrydate) ORDER BY d ASC`,
+             GROUP BY DATE_FORMAT(entrydate, '%Y-%m-%d') ORDER BY d ASC`,
              [trend7Str, ydayStr, ...ecmsParams]).catch(() => []),
 
       // 5. QC mistakes yesterday
@@ -138,9 +138,9 @@ module.exports = async function handler(req, res) {
              [ydayStr, ...qcParams]).catch(() => [{}]),
 
       // 6. QC 7-day trend
-      query(`SELECT DATE(entrydate) AS d, SUM(no_of_mistake) AS mistakes
+      query(`SELECT DATE_FORMAT(entrydate, '%Y-%m-%d') AS d, SUM(no_of_mistake) AS mistakes
              FROM qc_review WHERE DATE(entrydate) BETWEEN ? AND ?${qcExtra}
-             GROUP BY DATE(entrydate) ORDER BY d ASC`,
+             GROUP BY DATE_FORMAT(entrydate, '%Y-%m-%d') ORDER BY d ASC`,
              [trend7Str, ydayStr, ...qcParams]).catch(() => []),
 
       // 7. Field visits yesterday
@@ -237,10 +237,8 @@ module.exports = async function handler(req, res) {
 
     const trend7days = [];
     for (let i = 6; i >= 0; i--) {
-      // Use IST offset so dates match MySQL stored values
-      const ds    = istNow(new Date(Date.now() - (i + 1) * 864e5));
-      const dt    = new Date(ds + 'T00:00:00+05:30');
-      const label = dt.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+      const ds    = toIST(Date.now() - (i + 1) * 864e5);
+      const label = new Date(ds + 'T12:00:00Z').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
       trend7days.push({
         date:    ds,
         label,
