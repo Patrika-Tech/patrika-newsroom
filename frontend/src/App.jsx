@@ -15,6 +15,7 @@ import Alerts from './pages/Alerts.jsx';
 import Reports from './pages/Reports.jsx';
 import Settings from './pages/Settings.jsx';
 import Feedback from './pages/Feedback.jsx';
+import Tasks    from './pages/Tasks.jsx';
 
 // ── Error Boundary — shows the crash message instead of blank screen ──────────
 class ErrorBoundary extends Component {
@@ -42,14 +43,23 @@ class ErrorBoundary extends Component {
   }
 }
 
+// First accessible route per role — used as the post-login landing page
+const ROLE_HOME = { Legal: '/legal' };
+function roleHome(user) { return ROLE_HOME[user?.role] || '/'; }
+
 // ── Route guard ───────────────────────────────────────────────────────────────
 function Guard({ accessKey, children }) {
   const { user, canAccess } = useApp();
   const loc = useLocation();
   if (!user) return <Navigate to="/login" state={{ from: loc }} replace />;
-  // Never redirect "/" → "/" (infinite loop). For other routes, fallback to "/".
-  if (accessKey && accessKey !== 'home' && !canAccess(accessKey))
-    return <Navigate to="/" replace />;
+  // If user lacks access to this route, send them to their role's landing page.
+  // Check home access explicitly (old code skipped 'home' to avoid "/" → "/" loops,
+  // but that let Legal users see the dashboard).
+  if (accessKey && !canAccess(accessKey)) {
+    const home = roleHome(user);
+    // Avoid redirect loop: if we're already at the fallback, just render it.
+    if (loc.pathname !== home) return <Navigate to={home} replace />;
+  }
   return <Layout>{children}</Layout>;
 }
 
@@ -71,6 +81,7 @@ export default function App() {
         <Route path="/reports"   element={<Guard accessKey="reports">    <Reports />       </Guard>} />
         <Route path="/settings"  element={<Guard accessKey="settings">   <Settings />      </Guard>} />
         <Route path="/feedback"  element={<Guard accessKey="feedback">   <Feedback />      </Guard>} />
+        <Route path="/tasks"     element={<Guard accessKey="tasks">      <Tasks />         </Guard>} />
         <Route path="*"          element={<Navigate to="/" replace />} />
       </Routes>
     </ErrorBoundary>

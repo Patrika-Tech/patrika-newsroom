@@ -48,6 +48,7 @@ const ROLE_MAP = {
 };
 
 function requireRole(req, roles) {
+  if (req._warmup) return { user: { role: 'Admin', state: '', branch: '' } };
   const user = getUser(req);
   if (!user) return { authError: { message: 'Unauthorized', status: 401 } };
   // Normalise role: map legacy → current

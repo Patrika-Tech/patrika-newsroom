@@ -19,7 +19,7 @@ export default function Login() {
     try {
       const user = await api.login(username, password);
       login(user);
-      nav('/');
+      nav(user.role === 'Legal' ? '/legal' : '/');
     } catch (e) { setErr(e.message || 'Login failed'); }
     finally { setBusy(false); }
   };

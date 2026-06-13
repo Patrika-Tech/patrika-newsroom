@@ -112,6 +112,11 @@ app.get('/api/archive',                h('./api/archive'));
 // Serve uploaded archive files
 app.use('/uploads/archive', require('express').static(require('path').join(__dirname, 'uploads', 'archive')));
 
+// ── Tasks ─────────────────────────────────────────────────────────────────────
+app.all('/api/tasks/assignees',       h('./api/tasks/assignees'));   // before /:id
+app.all('/api/tasks/:id',             h('./api/tasks/[id]'));
+app.all('/api/tasks',                 h('./api/tasks'));
+
 // ── AI ────────────────────────────────────────────────────────────────────────
 app.get('/api/ai/insights',           h('./api/ai/insights'));
 app.all('/api/ai/assistant',          h('./api/ai/assistant'));
@@ -126,4 +131,8 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`✅ Patrika Newsroom running at http://localhost:${PORT}`);
   console.log(`   MySQL: ${process.env.MYSQL_HOST}:${process.env.MYSQL_PORT || 3306} / ${process.env.MYSQL_DATABASE}`);
+
+  // Warm the AI insights cache immediately on startup so the first user
+  // never waits for a cold DB scan.
+  try { require('./api/ai/insights').warmup(); } catch (e) { console.warn('[warmup]', e.message); }
 });

@@ -78,7 +78,7 @@ export const api = {
     const p = new URLSearchParams({ date });
     if (state  && state  !== 'All') p.set('state',  state);
     if (branch && branch !== 'All') p.set('branch', branch);
-    return withFallback(`/pages?${p.toString()}`, { date, news:{summary:{},categories:[],trend:[]}, qc:{summary:{},by_category:[],recent:[]}, visits:{summary:{},by_remark:[],by_transport:[],markers:[]} });
+    return withFallback(`/pages?${p.toString()}`, { date, news:{summary:{},categories:[],trend:[]}, qc:{summary:{},by_category:[],recent:[]}, visits:{summary:{},by_remark:[],by_transport:[],markers:[],persons:[]} });
   },
   hrEmployees:  ()        => withFallback('/hr/employees',                    mock.employees),
   hrRetirements:()        => withFallback('/hr/retirements',                  mock.retirements),
@@ -92,11 +92,12 @@ export const api = {
     const p = new URLSearchParams({ type, ...params });
     return withFallback(`/reports?${p}`, { type, columns: [], rows: [], total: 0 });
   },
-  aiInsights: (state, branch, refresh = false) => {
+  aiInsights: (state, branch, refresh = false, part = 'fast') => {
     const p = new URLSearchParams();
     if (state  && state  !== 'All') p.set('state',  state);
     if (branch && branch !== 'All') p.set('branch', branch);
     if (refresh) p.set('refresh', '1');
+    if (part !== 'fast') p.set('part', part);
     const qs = p.toString();
     return withFallback(`/ai/insights${qs ? '?' + qs : ''}`, null);
   },
@@ -150,6 +151,18 @@ export const api = {
   hrAdminStats:      ()          => withFallback('/hr/admin-stats', null),
   hrSanctionedPosts: ()          => withFallback('/hr/sanctioned-posts', []),
   saveSanctionedPost:(data)      => request('/hr/sanctioned-posts', { method: 'POST', body: JSON.stringify(data) }),
+
+  // ── Task Management ──────────────────────────────────────────────────────────
+  listTasks: (status) => {
+    const p = new URLSearchParams();
+    if (status) p.set('status', status);
+    const qs = p.toString();
+    return request(`/tasks${qs ? '?' + qs : ''}`);
+  },
+  createTask: (data) => request('/tasks', { method: 'POST', body: JSON.stringify(data) }),
+  updateTask: (id, data) => request(`/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteTask: (id)       => request(`/tasks/${id}`, { method: 'DELETE' }),
+  taskAssignees: ()      => request('/tasks/assignees'),
 
   /**
    * Send an alert (or any custom message) to Telegram.

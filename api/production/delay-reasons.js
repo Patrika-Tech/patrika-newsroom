@@ -41,20 +41,32 @@ module.exports = async function handler(req, res) {
   setCors(res);
   if (handleOptions(req, res)) return;
 
-  const { authError } = requireRole(req, ['Admin', 'State Head', 'Regional Editor', 'HR', 'Management', 'Viewer']);
+  const { authError, user } = requireRole(req, ['Admin', 'State Head', 'Regional Editor', 'HR', 'Management', 'Viewer']);
   if (authError) return res.status(authError.status).json({ error: authError.message });
 
   // ── GET — fetch reasons for a date ────────────────────────────────────────
   if (req.method === 'GET') {
     const date = req.query.date || new Date().toISOString().slice(0, 10);
     try {
+      // Role-based scope lock: RE sees only their branch, State Head only their state
+      const conds  = ['pub_date = ?'];
+      const params = [date];
+
+      if (user.role === 'Regional Editor') {
+        if (user.state)  { conds.push('state = ?');  params.push(user.state);  }
+        if (user.branch) { conds.push('branch = ?'); params.push(user.branch); }
+      } else if (user.role === 'State Head') {
+        if (user.state)  { conds.push('state = ?');  params.push(user.state);  }
+      }
+      // Admin / HR / Management → no extra filter
+
       const rows = await query(
         `SELECT id, branch, state, pub_date, reason,
                 submitted_by_name, submitted_at
          FROM delay_reasons
-         WHERE pub_date = ?
+         WHERE ${conds.join(' AND ')}
          ORDER BY submitted_at ASC`,
-        [date]
+        params
       );
       return res.json({ date, reasons: rows });
     } catch (err) {

@@ -5,10 +5,10 @@ import {
 } from 'recharts';
 import {
   Newspaper, CheckSquare, MapPin, TrendingUp, Camera, AlertTriangle,
-  Loader2, RefreshCw, ChevronLeft, ChevronRight, Download,
+  Loader2, RefreshCw, ChevronLeft, ChevronRight, Download, Search, Clock, Navigation,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useApp } from '../context/AppContext.jsx';
 import { api } from '../api/client.js';
@@ -348,113 +348,308 @@ function QCTab({ data }) {
   );
 }
 
+// ── FlyTo: re-centers the parent MapContainer when lat/lng change ─────────────
+function FlyTo({ lat, lng }) {
+  const map = useMap();
+  useEffect(() => { if (lat && lng) map.flyTo([lat, lng], 14, { duration: 0.8 }); }, [lat, lng]);
+  return null;
+}
+
+function fmtDuration(mins) {
+  if (mins == null || mins < 0) return '—';
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+// ── Reverse geocoding via Nominatim ──────────────────────────────────────────
+// Module-level cache: survives tab navigation, keyed by rounded lat/lng
+const GEO_CACHE = new Map();
+
+function geoKey(lat, lng) {
+  return `${Number(lat).toFixed(4)},${Number(lng).toFixed(4)}`;
+}
+
+async function fetchGeoName(lat, lng) {
+  const key = geoKey(lat, lng);
+  if (GEO_CACHE.has(key)) return GEO_CACHE.get(key);
+  try {
+    const r = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=en`,
+      { headers: { 'User-Agent': 'PatrikaNewsroom/1.0' } }
+    );
+    if (!r.ok) { GEO_CACHE.set(key, ''); return ''; }
+    const d = await r.json();
+    const a = d.address || {};
+    const area = a.amenity || a.leisure || a.tourism ||
+                 a.suburb  || a.neighbourhood || a.city_district ||
+                 a.quarter || a.hamlet || '';
+    const city = a.city || a.town || a.village || a.county || a.state_district || '';
+    const name = [area, city].filter(Boolean).join(', ') ||
+                 d.display_name?.split(',').slice(0, 2).join(',').trim() || '';
+    GEO_CACHE.set(key, name);
+    return name;
+  } catch {
+    GEO_CACHE.set(key, '');
+    return '';
+  }
+}
+
 // ── VisitsTab ─────────────────────────────────────────────────────────────────
 function VisitsTab({ data }) {
   const { visits } = data;
+  const [selected,  setSelected]  = useState(null);
+  const [search,    setSearch]    = useState('');
+  const [showAll,   setShowAll]   = useState(false);
+  const [geoNames,  setGeoNames]  = useState({});   // key → geocoded name
 
   const remarkData = visits.by_remark;
-  const transportData = visits.by_transport;
-  const markers = visits.markers.filter(m => m.lat && m.lng && !isNaN(m.lat) && !isNaN(m.lng));
+  const persons    = visits.persons ?? [];
 
-  // India center
-  const center = [22.9, 78.7];
+  // Reverse-geocode all GPS-tagged persons, 1 req/sec (Nominatim rate limit)
+  useEffect(() => {
+    const toFetch = persons.filter(p => p.lat && p.lng);
+    if (!toFetch.length) return;
+
+    // Pre-fill from cache immediately (no flicker for already-seen coordinates)
+    const cached = {};
+    toFetch.forEach(p => {
+      const k = geoKey(p.lat, p.lng);
+      if (GEO_CACHE.has(k)) cached[k] = GEO_CACHE.get(k);
+    });
+    if (Object.keys(cached).length) setGeoNames(prev => ({ ...prev, ...cached }));
+
+    // Queue the ones not yet cached
+    const queue = toFetch.filter(p => !GEO_CACHE.has(geoKey(p.lat, p.lng)));
+    if (!queue.length) return;
+
+    let cancelled = false;
+    (async () => {
+      for (const p of queue) {
+        if (cancelled) break;
+        const k    = geoKey(p.lat, p.lng);
+        const name = await fetchGeoName(p.lat, p.lng);
+        if (!cancelled) setGeoNames(prev => ({ ...prev, [k]: name }));
+        // Nominatim ToS: max 1 request per second
+        await new Promise(res => setTimeout(res, 1100));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [persons]);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return persons;
+    const q = search.toLowerCase();
+    return persons.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      p.branch.toLowerCase().includes(q) ||
+      (p.purpose || '').toLowerCase().includes(q) ||
+      (p.label || p.location || '').toLowerCase().includes(q)
+    );
+  }, [persons, search]);
+
+  const visible = showAll ? filtered : filtered.slice(0, 25);
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* By remark */}
-        <SectionCard title="Visits by Type / Remark">
-          {remarkData.length === 0
-            ? <p className="text-sm py-8 text-center" style={{ color: 'var(--muted)' }}>No visit data for selected date.</p>
-            : <ResponsiveContainer width="100%" height={Math.max(220, remarkData.length * 30)}>
-                <BarChart data={remarkData} layout="vertical" margin={{ left: 8, right: 40, top: 4, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-                  <XAxis type="number" stroke="var(--muted)" fontSize={11} />
-                  <YAxis type="category" dataKey="name" width={110} stroke="var(--muted)" fontSize={9} />
-                  <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10 }} />
-                  <Bar dataKey="value" fill="#3b82f6" radius={[0,4,4,0]} barSize={14}
-                    label={{ position: 'right', fontSize: 10 }} />
-                </BarChart>
-              </ResponsiveContainer>
-          }
-        </SectionCard>
 
-        {/* By transport */}
-        <SectionCard title="Visits by Transport">
-          {transportData.length === 0
-            ? <p className="text-sm py-8 text-center" style={{ color: 'var(--muted)' }}>No transport data.</p>
-            : <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie data={transportData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75}
-                    label={({ name, percent }) => percent > 0.05 ? `${name}: ${(percent*100).toFixed(0)}%` : ''}
-                    labelLine={false} fontSize={10}>
-                    {transportData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10 }} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                </PieChart>
-              </ResponsiveContainer>
-          }
-        </SectionCard>
-      </div>
-
-      {/* Map */}
-      <SectionCard title={`Field Visit Map · ${markers.length} GPS locations`}>
-        {markers.length === 0
-          ? <div className="flex flex-col items-center justify-center py-16 gap-2" style={{ color: 'var(--muted)' }}>
-              <MapPin size={32} />
-              <p className="text-sm">No GPS-tagged visits for this date.</p>
-            </div>
-          : <>
-              <div style={{ height: 480, borderRadius: 12, overflow: 'hidden' }}>
-                <MapContainer center={center} zoom={5} style={{ height: '100%', width: '100%' }} scrollWheelZoom={true}>
-                  <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  />
-                  {markers.map((m, i) => (
-                    <CircleMarker
-                      key={i}
-                      center={[m.lat, m.lng]}
-                      radius={7}
-                      pathOptions={{
-                        fillColor: markerColor(m.remark),
-                        fillOpacity: 0.85,
-                        color: '#fff',
-                        weight: 1.5,
-                      }}
-                    >
-                      <Popup>
-                        <div style={{ minWidth: 160, fontSize: 12 }}>
-                          <div className="font-bold mb-1">{m.label || m.location || 'Visit'}</div>
-                          {m.location && <div style={{ color: '#666' }}>{m.location}</div>}
-                          <div className="mt-1"><b>Remark:</b> {m.remark || '—'}</div>
-                          <div><b>Transport:</b> {m.transport || '—'}</div>
-                          <div style={{ color: '#888', fontSize: 11, marginTop: 4 }}>
-                            {m.lat.toFixed(4)}, {m.lng.toFixed(4)}
-                          </div>
-                        </div>
-                      </Popup>
-                    </CircleMarker>
-                  ))}
-                </MapContainer>
-              </div>
-              {/* Legend */}
-              <div className="flex flex-wrap items-center gap-3 mt-3 text-xs" style={{ color: 'var(--muted)' }}>
-                {Object.entries(MARKER_COLORS).map(([label, col]) => (
-                  <span key={label} className="flex items-center gap-1.5">
-                    <span className="inline-block w-3 h-3 rounded-full" style={{ background: col }} />
-                    {label}
-                  </span>
-                ))}
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block w-3 h-3 rounded-full" style={{ background: '#6b7280' }} />
-                  Other
-                </span>
-              </div>
-            </>
+      {/* ── Visits by Type ──────────────────────────────────────────────────── */}
+      <SectionCard title="Visits by Type / Remark">
+        {remarkData.length === 0
+          ? <p className="text-sm py-8 text-center" style={{ color: 'var(--muted)' }}>No visit data for selected date.</p>
+          : <ResponsiveContainer width="100%" height={Math.max(180, remarkData.length * 30)}>
+              <BarChart data={remarkData} layout="vertical" margin={{ left: 8, right: 40, top: 4, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+                <XAxis type="number" stroke="var(--muted)" fontSize={11} />
+                <YAxis type="category" dataKey="name" width={110} stroke="var(--muted)" fontSize={9} />
+                <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10 }} />
+                <Bar dataKey="value" fill="#3b82f6" radius={[0,4,4,0]} barSize={14}
+                  label={{ position: 'right', fontSize: 10 }} />
+              </BarChart>
+            </ResponsiveContainer>
         }
       </SectionCard>
+
+      {/* ── Person-wise visits ───────────────────────────────────────────────── */}
+      <SectionCard
+        title={`Person-wise Visits · ${filtered.length} reporter${filtered.length !== 1 ? 's' : ''}`}
+        action={
+          <div className="relative">
+            <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--muted)' }} />
+            <input
+              className="input py-1 pl-6 text-xs w-48"
+              placeholder="Search name / branch / purpose…"
+              value={search}
+              onChange={e => { setSearch(e.target.value); setShowAll(false); }}
+            />
+          </div>
+        }
+      >
+        <div className="grid gap-4 lg:grid-cols-5">
+
+          {/* Table — 3/5 width */}
+          <div className="lg:col-span-3 overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr style={{ color: 'var(--muted)', borderBottom: '1px solid var(--border)' }}>
+                  <th className="pb-2 pr-3 text-left font-semibold">Name</th>
+                  <th className="pb-2 pr-3 text-left font-semibold">Branch</th>
+                  <th className="pb-2 pr-3 text-left font-semibold">In</th>
+                  <th className="pb-2 pr-3 text-left font-semibold">Out</th>
+                  <th className="pb-2 pr-3 text-left font-semibold">Duration</th>
+                  <th className="pb-2 pr-3 text-left font-semibold">Purpose</th>
+                  <th className="pb-2 pr-3 text-left font-semibold">Nearby Location</th>
+                  <th className="pb-2 text-left font-semibold">GPS Address</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.length === 0 && (
+                  <tr><td colSpan={8} className="py-8 text-center" style={{ color: 'var(--muted)' }}>
+                    {search ? 'No reporters match your search.' : 'No visit data for this date.'}
+                  </td></tr>
+                )}
+                {visible.map((p, i) => {
+                  const isSel = selected?.pan_no === p.pan_no && selected?.in_time === p.in_time;
+                  return (
+                    <tr
+                      key={i}
+                      onClick={() => setSelected(isSel ? null : p)}
+                      className="cursor-pointer transition-colors"
+                      style={{
+                        borderBottom: '1px solid var(--border)',
+                        background: isSel ? 'var(--brand)10' : undefined,
+                      }}
+                    >
+                      <td className="py-2 pr-3 font-semibold" style={{ color: isSel ? 'var(--brand)' : undefined }}>
+                        {p.name}
+                        {p.lat && <Navigation size={9} className="inline ml-1 opacity-50" />}
+                      </td>
+                      <td className="py-2 pr-3" style={{ color: 'var(--muted)' }}>{p.branch}</td>
+                      <td className="py-2 pr-3 font-mono">{p.in_time  || '—'}</td>
+                      <td className="py-2 pr-3 font-mono">{p.out_time || '—'}</td>
+                      <td className="py-2 pr-3">
+                        <span className="flex items-center gap-1" style={{ color: p.dur_min >= 60 ? '#16a34a' : 'var(--text)' }}>
+                          <Clock size={10} />
+                          {fmtDuration(p.dur_min)}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-3" style={{ color: 'var(--muted)', maxWidth: 110 }}>{p.purpose}</td>
+                      <td className="py-2 pr-3 font-medium text-xs" style={{ maxWidth: 160 }}>
+                        {p.lat ? (
+                          geoNames[geoKey(p.lat, p.lng)]
+                            ? <span className="flex items-center gap-1">
+                                <MapPin size={10} style={{ color: 'var(--brand)', flexShrink: 0 }} />
+                                {geoNames[geoKey(p.lat, p.lng)]}
+                              </span>
+                            : <span style={{ color: 'var(--muted)' }}>…</span>
+                        ) : <span style={{ color: 'var(--muted)' }}>—</span>}
+                      </td>
+                      <td className="py-2 text-xs" style={{ color: 'var(--muted)', maxWidth: 140 }}>
+                        {p.location || '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {filtered.length > 25 && (
+              <button className="btn-ghost mt-2 w-full text-xs" onClick={() => setShowAll(s => !s)}>
+                {showAll ? 'Show less' : `Show all ${filtered.length} reporters ↓`}
+              </button>
+            )}
+          </div>
+
+          {/* Detail panel — 2/5 width */}
+          <div className="lg:col-span-2">
+            {selected ? (
+              <div className="rounded-xl overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
+                {/* Info header */}
+                <div className="p-3" style={{ background: 'var(--bg)' }}>
+                  <div className="font-bold text-sm mb-0.5">{selected.name}</div>
+                  <div className="text-xs" style={{ color: 'var(--muted)' }}>{selected.branch} · {selected.state}</div>
+                  <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                    <div>
+                      <div style={{ color: 'var(--muted)' }}>In</div>
+                      <div className="font-mono font-semibold">{selected.in_time  || '—'}</div>
+                    </div>
+                    <div>
+                      <div style={{ color: 'var(--muted)' }}>Out</div>
+                      <div className="font-mono font-semibold">{selected.out_time || '—'}</div>
+                    </div>
+                    <div>
+                      <div style={{ color: 'var(--muted)' }}>Duration</div>
+                      <div className="font-semibold" style={{ color: '#16a34a' }}>{fmtDuration(selected.dur_min)}</div>
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs">
+                    <span style={{ color: 'var(--muted)' }}>Purpose: </span>{selected.purpose}
+                  </div>
+                  {selected.transport && (
+                    <div className="text-xs"><span style={{ color: 'var(--muted)' }}>Transport: </span>{selected.transport}</div>
+                  )}
+                  {selected.lat && geoNames[geoKey(selected.lat, selected.lng)] && (
+                    <div className="mt-1 text-xs font-semibold" style={{ color: 'var(--brand)' }}>
+                      <MapPin size={11} className="inline mr-1" />
+                      {geoNames[geoKey(selected.lat, selected.lng)]}
+                    </div>
+                  )}
+                  {selected.location && (
+                    <div className="text-xs mt-0.5" style={{ color: 'var(--muted)', marginLeft: 15 }}>
+                      {selected.location}
+                    </div>
+                  )}
+                  {selected.lat && (
+                    <div className="text-xs mt-0.5" style={{ color: 'var(--muted)', marginLeft: 15 }}>
+                      {selected.lat.toFixed(5)}, {selected.lng.toFixed(5)}
+                    </div>
+                  )}
+                </div>
+
+                {/* Mini-map */}
+                {selected.lat ? (
+                  <div style={{ height: 220 }}>
+                    <MapContainer
+                      center={[selected.lat, selected.lng]}
+                      zoom={14}
+                      style={{ height: '100%', width: '100%' }}
+                      zoomControl={false}
+                      scrollWheelZoom={false}
+                    >
+                      <TileLayer
+                        attribution='&copy; OpenStreetMap'
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      />
+                      <FlyTo lat={selected.lat} lng={selected.lng} />
+                      <CircleMarker
+                        center={[selected.lat, selected.lng]}
+                        radius={10}
+                        pathOptions={{ fillColor: '#d71920', fillOpacity: 0.9, color: '#fff', weight: 2 }}
+                      >
+                        <Popup>
+                          <b>{selected.name}</b><br />
+                          {selected.label || selected.location || ''}
+                        </Popup>
+                      </CircleMarker>
+                    </MapContainer>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center py-8 gap-2 text-xs" style={{ color: 'var(--muted)' }}>
+                    <MapPin size={16} />
+                    No GPS data for this visit
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full py-12 gap-2 rounded-xl border"
+                style={{ borderColor: 'var(--border)', color: 'var(--muted)', borderStyle: 'dashed' }}>
+                <MapPin size={24} />
+                <p className="text-xs">Click a reporter to see<br />visit details and location</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </SectionCard>
+
     </div>
   );
 }

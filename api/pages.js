@@ -85,7 +85,7 @@ module.exports = async function handler(req, res) {
     const [
       newsDay, newsTrend,
       qcSummary, qcByCat, qcBySeverity, qcRecent,
-      visitSummary, visitByRemark, visitByTransport, visitMarkers,
+      visitSummary, visitByRemark, visitByTransport, visitMarkers, visitPersons,
     ] = await Promise.all([
 
       // ── News: single day aggregate ──────────────────────────────────────────
@@ -172,6 +172,34 @@ module.exports = async function handler(req, res) {
           AND CAST(LATITUDE  AS DECIMAL(10,7)) BETWEEN 68 AND 98
           ${visitWhere}
         LIMIT 500`, [date, ...visitParams]).catch(() => []),
+
+      // ── Person-wise visits — uses u.State/u.Branch directly (already joined) ─
+      // Cannot reuse visitWhere here: its "pan_no IN (...)" is ambiguous when
+      // both visit_report.pan_no and user.pan_no are in scope.
+      query(`SELECT v.pan_no,
+          u.EMPNAME AS name, u.Branch AS branch, u.State AS state,
+          TIME(v.visit_in_time)  AS in_time,
+          TIME(v.visit_out_time) AS out_time,
+          TIMESTAMPDIFF(MINUTE, v.visit_in_time, v.visit_out_time) AS dur_min,
+          v.visit_purpose   AS purpose,
+          v.visit_in_location AS location,
+          v.label_in_location AS label,
+          TRIM(v.visit_remark)  AS remark,
+          v.transport,
+          CAST(v.LONGITUDE AS DECIMAL(10,7)) AS lat,
+          CAST(v.LATITUDE  AS DECIMAL(10,7)) AS lng
+        FROM visit_report v
+        JOIN \`user\` u ON v.pan_no = u.pan_no
+        WHERE DATE(v.visit_date) = ?
+          AND (v.visit_remark IS NULL OR v.visit_remark != 'Week Off')
+          ${filterState  && filterState  !== 'All' ? 'AND u.State = ?'  : ''}
+          ${filterBranch && filterBranch !== 'All' ? 'AND u.Branch = ?' : ''}
+        ORDER BY u.EMPNAME ASC
+        LIMIT 300`,
+        [date,
+         ...(filterState  && filterState  !== 'All' ? [filterState]  : []),
+         ...(filterBranch && filterBranch !== 'All' ? [filterBranch] : []),
+        ]).catch(() => []),
     ]);
 
     // ── Build categories list ─────────────────────────────────────────────────
@@ -247,6 +275,27 @@ module.exports = async function handler(req, res) {
           remark:   r.remark   || '',
           transport:r.transport|| '',
         })),
+        persons: visitPersons.map(r => {
+          const lat = Number(r.lat);
+          const lng = Number(r.lng);
+          const hasGps = lat >= 6 && lat <= 38 && lng >= 68 && lng <= 98;
+          return {
+            pan_no:   r.pan_no   || '',
+            name:     r.name     || '—',
+            branch:   r.branch   || '—',
+            state:    r.state    || '—',
+            in_time:  r.in_time  ? String(r.in_time).slice(0, 5)  : null,
+            out_time: r.out_time ? String(r.out_time).slice(0, 5) : null,
+            dur_min:  (r.dur_min != null && r.dur_min >= 0) ? Number(r.dur_min) : null,
+            purpose:  r.purpose  || '—',
+            location: r.location || '',
+            label:    r.label    || '',
+            remark:   r.remark   || '',
+            transport:r.transport|| '',
+            lat:      hasGps ? lat : null,
+            lng:      hasGps ? lng : null,
+          };
+        }),
       },
     });
 

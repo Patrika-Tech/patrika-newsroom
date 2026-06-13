@@ -24,7 +24,7 @@ MySQL 8.0 database (editorial_reports). Tables:
 - alerts(id INT, message TEXT, is_read TINYINT, created_at DATETIME)
 
 Current IST dates — today: ${toIST(Date.now())} | yesterday: ${toIST(Date.now() - 864e5)} | 7 days ago: ${toIST(Date.now() - 7 * 864e5)}
-Rules: Use DATE_FORMAT(col,'%Y-%m-%d') for date string comparisons. Always add LIMIT 20. SELECT only.
+Rules: Use range comparisons (col >= 'YYYY-MM-DD' AND col < 'YYYY-MM-DD') for indexed date columns. Always add LIMIT 20. SELECT only.
 `;
 
 const DANGEROUS = /\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|EXEC|EXECUTE|CALL|GRANT|REVOKE)\b/i;
