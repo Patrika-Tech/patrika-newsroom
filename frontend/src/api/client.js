@@ -152,6 +152,27 @@ export const api = {
   hrSanctionedPosts: ()          => withFallback('/hr/sanctioned-posts', []),
   saveSanctionedPost:(data)      => request('/hr/sanctioned-posts', { method: 'POST', body: JSON.stringify(data) }),
 
+  // ── Legal Notices ─────────────────────────────────────────────────────────────
+  listLegalNotices: () => withFallback('/legal-notices', { notices: [] }),
+  saveLegalNotice:  (data) => request('/legal-notices', { method: 'POST', body: JSON.stringify(data) }),
+  updateLegalNotice:(id, data) => request(`/legal-notices/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteLegalNotice:(id)       => request(`/legal-notices/${id}`, { method: 'DELETE' }),
+
+  parseLegalNoticePdf: async (formData) => {
+    const token = localStorage.getItem('pk_token');
+    const res = await fetch(`${API_BASE}/legal-notices/parse`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try { const j = await res.json(); msg = j.error || msg; } catch {}
+      throw new Error(msg);
+    }
+    return res.json();
+  },
+
   // ── Task Management ──────────────────────────────────────────────────────────
   listTasks: (status) => {
     const p = new URLSearchParams();

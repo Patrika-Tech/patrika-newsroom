@@ -11,6 +11,10 @@
  *   pm2 start server.js --name patrika-newsroom
  *
  * Env vars: copy .env.example → .env and fill in values.
+ *
+ * Ubuntu deps for canvas (OCR):
+ *   sudo apt install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
+ *   npm install
  */
 
 require('dotenv').config();
@@ -78,6 +82,12 @@ app.all('/api/locations',             h('./api/locations'));
 // ── Legal ─────────────────────────────────────────────────────────────────────
 app.all('/api/legal/:id',             h('./api/legal/[id]'));
 app.all('/api/legal',                 h('./api/legal'));
+
+// ── Legal Notices ─────────────────────────────────────────────────────────────
+app.post('/api/legal-notices/parse',  require('./api/legal-notices/parse'));  // multipart — no h()
+app.all('/api/legal-notices/:id',     h('./api/legal-notices/[id]'));
+app.all('/api/legal-notices',         h('./api/legal-notices'));
+app.use('/uploads/legal-notices', require('express').static(require('path').join(__dirname, 'uploads', 'legal-notices')));
 
 // ── Alerts ────────────────────────────────────────────────────────────────────
 app.all('/api/alerts/send-telegram',  h('./api/alerts/send-telegram'));
