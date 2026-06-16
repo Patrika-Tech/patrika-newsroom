@@ -22,9 +22,8 @@ import { PageHeader, SectionCard, Badge } from '../components/UI.jsx';
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 const TABS = [
-  { id: 'feed',     icon: Newspaper,    label: 'News Feed'   },
-  { id: 'calendar', icon: CalendarDays, label: 'Calendar'    },
-  { id: 'newsroom', icon: LayoutGrid,   label: 'Newsroom'    },
+  { id: 'feed',     icon: Newspaper,    label: 'News Feed' },
+  { id: 'calendar', icon: CalendarDays, label: 'Calendar'  },
 ];
 
 // ── Type colours for calendar dots ───────────────────────────────────────────
