@@ -174,55 +174,6 @@ function NewsFeedTab({ anniversaries, summary }) {
         ))}
       </div>
 
-      {/* Right: Story Anniversaries */}
-      <div>
-        <SectionCard title={<span className="flex items-center gap-1.5"><Clock size={14} /> On This Day — 1 Year Ago</span>}>
-          {anniversaries.length === 0 ? (
-            <p className="text-xs py-4 text-center" style={{ color:'var(--muted)' }}>No data for this date last year</p>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-xs" style={{ color:'var(--muted)' }}>
-                Reporters who filed stories on <strong>{fmtDate(new Date(Date.now()-864e5*365).toISOString())}</strong> last year.
-                Great candidates for <em>follow-up</em> stories today.
-              </p>
-              {anniversaries.map((a, i) => (
-                <div key={i} className="rounded-lg p-3" style={{ background:'var(--bg)', borderLeft:`3px solid #C9A227` }}>
-                  <div className="font-semibold text-sm">{a.name}</div>
-                  <div className="text-xs mt-0.5" style={{ color:'var(--muted)' }}>{a.branch} · {a.state}</div>
-                  <div className="flex flex-wrap gap-2 mt-2 text-xs">
-                    <span className="pill" style={{ background:'#d7192018', color:'#d71920' }}>{a.stories} stories</span>
-                    {a.excl > 0   && <span className="pill" style={{ background:'#C9A22718', color:'#C9A227' }}>{a.excl} excl</span>}
-                    {a.expose > 0 && <span className="pill" style={{ background:'#8c0a0e18', color:'#8c0a0e' }}>{a.expose} exposé</span>}
-                    {a.impact > 0 && <span className="pill" style={{ background:'#16a34a18', color:'#16a34a' }}>{a.impact} impact</span>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </SectionCard>
-
-        {/* Yesterday summary */}
-        {summary && (
-          <div className="card p-4 mt-3 grid grid-cols-2 gap-3">
-            <div>
-              <div className="text-xs" style={{ color:'var(--muted)' }}>Reporters Active</div>
-              <div className="text-2xl font-bold">{summary.reporters || 0}</div>
-            </div>
-            <div>
-              <div className="text-xs" style={{ color:'var(--muted)' }}>Stories Filed</div>
-              <div className="text-2xl font-bold">{(summary.stories||0).toLocaleString()}</div>
-            </div>
-            <div>
-              <div className="text-xs" style={{ color:'var(--muted)' }}>Photos</div>
-              <div className="text-2xl font-bold">{(summary.photos||0).toLocaleString()}</div>
-            </div>
-            <div>
-              <div className="text-xs" style={{ color:'var(--muted)' }}>Words</div>
-              <div className="text-2xl font-bold">{((summary.words||0)/1000).toFixed(0)}K</div>
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
