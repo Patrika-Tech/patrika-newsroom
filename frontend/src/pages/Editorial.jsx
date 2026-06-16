@@ -181,11 +181,18 @@ function NewsFeedTab({ anniversaries, summary }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB 2 — CALENDAR
 // ─────────────────────────────────────────────────────────────────────────────
-function CalendarTab({ prominentDays, planning }) {
+function CalendarTab({ prominentDays, planning, onMonthChange }) {
   const today = new Date();
   const [viewDate,    setViewDate]    = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selected,    setSelected]    = useState(null);
   const [regionFilter, setRegionFilter] = useState('');   // '' | 'RAJ' | 'MP' | 'CG'
+
+  const navigate = (delta) => {
+    const nd = new Date(viewDate.getFullYear(), viewDate.getMonth() + delta, 1);
+    setViewDate(nd);
+    setSelected(null);
+    onMonthChange && onMonthChange(yyyyMM(nd));
+  };
 
   // Filter prominentDays by region
   const filteredDays = prominentDays.filter(e => {
@@ -259,11 +266,11 @@ function CalendarTab({ prominentDays, planning }) {
         {/* Month nav */}
         <div className="card p-4">
           <div className="flex items-center justify-between mb-4">
-            <button onClick={() => setViewDate(new Date(yr, mo-1, 1))} className="btn-ghost p-2 rounded-lg">
+            <button onClick={() => navigate(-1)} className="btn-ghost p-2 rounded-lg">
               <ChevronLeft size={18} />
             </button>
             <h3 className="font-bold text-base">{monthLabel}</h3>
-            <button onClick={() => setViewDate(new Date(yr, mo+1, 1))} className="btn-ghost p-2 rounded-lg">
+            <button onClick={() => navigate(+1)} className="btn-ghost p-2 rounded-lg">
               <ChevronRight size={18} />
             </button>
           </div>
@@ -371,13 +378,13 @@ function CalendarTab({ prominentDays, planning }) {
             )}
           </SectionCard>
         ) : (
-          <SectionCard title="Upcoming Events">
+          <SectionCard title={`Events — ${monthLabel}`}>
             <p className="text-xs mb-3" style={{ color:'var(--muted)' }}>Click any day to see details and story angles.</p>
             <div className="space-y-2">
               {Object.entries(dayMap)
-                .filter(([d]) => d >= todayStr)
+                .filter(([d]) => d.startsWith(`${yr}-${String(mo+1).padStart(2,'0')}`))
                 .sort(([a],[b]) => a.localeCompare(b))
-                .slice(0, 8)
+                .slice(0, 12)
                 .map(([date, events]) => (
                   <button key={date} onClick={() => setSelected(date)}
                     className="w-full text-left rounded-lg p-3 hover:bg-opacity-80 transition-colors"
@@ -715,7 +722,7 @@ export default function Editorial() {
       {!loading && data && (
         <>
           {activeTab === 'feed'     && <NewsFeedTab     anniversaries={data.anniversaries} summary={data.summary} />}
-          {activeTab === 'calendar' && <CalendarTab     prominentDays={data.prominentDays} planning={data.planning} />}
+          {activeTab === 'calendar' && <CalendarTab     prominentDays={data.prominentDays} planning={data.planning} onMonthChange={setCalMonth} />}
           {activeTab === 'newsroom' && <NewsroomTab     topNews={data.topNews} planning={data.planning} deskReview={data.deskReview} rndIdeas={data.rndIdeas} />}
         </>
       )}
