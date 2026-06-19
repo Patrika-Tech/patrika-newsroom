@@ -17,7 +17,10 @@
  *   npm install
  */
 
-require('dotenv').config();
+// Load .env if present; fall back to .env.local for local dev (no .env at root)
+const _p = require('path');
+require('dotenv').config({ path: _p.join(__dirname, '.env') });
+require('dotenv').config({ path: _p.join(__dirname, '.env.local') });
 
 const express    = require('express');
 const path       = require('path');
@@ -108,6 +111,8 @@ app.all('/api/hr/training',           h('./api/hr/training'));
 app.all('/api/hr/grading',            h('./api/hr/grading'));
 app.all('/api/hr/sanctioned-posts',   h('./api/hr/sanctioned-posts'));
 app.all('/api/hr/admin-stats',        h('./api/hr/admin-stats'));
+app.all('/api/hr/appointments/:id',   h('./api/hr/appointments/[id]'));
+app.all('/api/hr/appointments',       h('./api/hr/appointments'));
 app.all('/api/hr/test-db',            h('./api/hr/test-db'));
 
 // ── Feedback ──────────────────────────────────────────────────────────────────
@@ -121,6 +126,15 @@ app.post('/api/archive',               require('./api/archive'));   // multipart
 app.get('/api/archive',                h('./api/archive'));
 // Serve uploaded archive files
 app.use('/uploads/archive', require('express').static(require('path').join(__dirname, 'uploads', 'archive')));
+
+// ── Field Reporting ───────────────────────────────────────────────────────────
+app.all('/api/field/reporter-login',    h('./api/field/reporter-login')); // employee table auth
+app.post('/api/field/upload',           require('./api/field/upload'));   // multipart
+app.all('/api/field/stories/:id',       h('./api/field/stories'));        // PATCH by id
+app.all('/api/field/stories',           h('./api/field/stories'));
+app.all('/api/field/visits/:id',        h('./api/field/visits'));   // PATCH checkout
+app.all('/api/field/visits',            h('./api/field/visits'));
+app.use('/uploads/field', express.static(path.join(__dirname, 'uploads', 'field')));
 
 // ── Tasks ─────────────────────────────────────────────────────────────────────
 app.all('/api/tasks/assignees',       h('./api/tasks/assignees'));   // before /:id

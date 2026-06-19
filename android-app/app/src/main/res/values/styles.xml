@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="GreenProgress" parent="Widget.AppCompat.ProgressBar">
+        <item name="colorAccent">#059669</item>
+    </style>
+</resources>

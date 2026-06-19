@@ -21,6 +21,14 @@ yarn-debug.log*
 # ── PM2 ──────────────────────────────────────────────────────────────────────
 .pm2/
 
+# ── AI model caches (downloaded at runtime) ──────────────────────────────────
+.model-cache/
+*.traineddata
+cache/
+uploads/
+server.err
+_test_*.js
+
 # ── Dev / test files ──────────────────────────────────────────────────────────
 backend/public/tg-debug.php
 backend/public/db-setup.php
@@ -31,6 +39,13 @@ sample-biodata.html
 
 # ── Vercel (not used in server deploy) ────────────────────────────────────────
 .vercel/
+
+# ── Android build output ─────────────────────────────────────────────────────
+android-app/app/build/
+android-app/.gradle/
+android-app/local.properties
+*.apk
+*.aab
 
 # ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store

@@ -152,6 +152,15 @@ export const api = {
   hrSanctionedPosts: ()          => withFallback('/hr/sanctioned-posts', []),
   saveSanctionedPost:(data)      => request('/hr/sanctioned-posts', { method: 'POST', body: JSON.stringify(data) }),
 
+  // ── Appointments ────────────────────────────────────────────────────────────
+  hrAppointments:      (params = {}) => {
+    const qs = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([,v]) => v))).toString();
+    return withFallback(`/hr/appointments${qs ? '?' + qs : ''}`, { appointments: [], stats: {} });
+  },
+  addAppointment:      (data)      => request('/hr/appointments', { method: 'POST', body: JSON.stringify(data) }),
+  updateAppointment:   (id, data)  => request(`/hr/appointments/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteAppointment:   (id)        => request(`/hr/appointments/${id}`, { method: 'DELETE' }),
+
   // ── Legal Notices ─────────────────────────────────────────────────────────────
   listLegalNotices: () => withFallback('/legal-notices', { notices: [] }),
   saveLegalNotice:  (data) => request('/legal-notices', { method: 'POST', body: JSON.stringify(data) }),
@@ -223,5 +232,45 @@ export const api = {
     } catch (err) {
       return { ok: false, error: err.message };
     }
+  },
+
+  // ── Field Reporter Portal login (employee table, MD5 passwords) ─────────────
+  reporterLogin: async (username, password) => {
+    const data = await request('/field/reporter-login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    });
+    if (data.token) localStorage.setItem('pk_token', data.token);
+    return data.user;
+  },
+
+  // ── Field Reporting ───────────────────────────────────────────────────────────
+  fieldStories: (params = {}) => {
+    const qs = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v))).toString();
+    return request(`/field/stories${qs ? '?' + qs : ''}`);
+  },
+  submitFieldStory: (data) => request('/field/stories', { method: 'POST', body: JSON.stringify(data) }),
+  updateFieldStory: (id, data) => request(`/field/stories/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+
+  fieldVisits: (params = {}) => {
+    const qs = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v))).toString();
+    return request(`/field/visits${qs ? '?' + qs : ''}`);
+  },
+  markFieldVisit:  (data)      => request('/field/visits', { method: 'POST', body: JSON.stringify(data) }),
+  checkOutVisit:   (id, data)  => request(`/field/visits/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+
+  uploadFieldFiles: async (formData) => {
+    const token = localStorage.getItem('pk_token');
+    const res = await fetch(`${API_BASE}/field/upload`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try { const j = await res.json(); msg = j.error || msg; } catch {}
+      throw new Error(msg);
+    }
+    return res.json();
   },
 };
