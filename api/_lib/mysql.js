@@ -34,7 +34,7 @@ function getPool() {
     waitForConnections: true,
     connectionLimit:    5,       // keep low for serverless
     queueLimit:         0,
-    timezone:           '+05:30', // IST
+    timezone:           'Z',      // RDS stores UTC via NOW(); frontend formats to IST
   });
 
   return pool;

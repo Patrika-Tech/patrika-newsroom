@@ -16,6 +16,8 @@ import Reports from './pages/Reports.jsx';
 import Settings from './pages/Settings.jsx';
 import Feedback from './pages/Feedback.jsx';
 import Tasks    from './pages/Tasks.jsx';
+import Field       from './pages/Field.jsx';
+import FieldPortal from './pages/FieldPortal.jsx';
 
 // ── Error Boundary — shows the crash message instead of blank screen ──────────
 class ErrorBoundary extends Component {
@@ -68,11 +70,13 @@ export default function App() {
   return (
     <ErrorBoundary>
       <Routes>
-        <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
+        <Route path="/login"    element={user ? <Navigate to="/" replace /> : <Login />} />
+        <Route path="/reporter" element={<FieldPortal />} />
         <Route path="/"          element={<Guard accessKey="home">       <Dashboard />     </Guard>} />
         <Route path="/editorial" element={<Guard accessKey="editorial">  <Editorial />     </Guard>} />
         <Route path="/production"element={<Guard accessKey="production"> <Production />    </Guard>} />
         <Route path="/pages"     element={<Guard accessKey="pages">      <PageMonitoring /></Guard>} />
+        <Route path="/field"     element={<Guard accessKey="field">      <Field />         </Guard>} />
         <Route path="/hr"        element={<Guard accessKey="hr">         <Hr />            </Guard>} />
         <Route path="/legal"     element={<Guard accessKey="legal">      <Legal />         </Guard>} />
         <Route path="/archive"   element={<Guard accessKey="archive">    <Archive />       </Guard>} />

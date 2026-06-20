@@ -182,9 +182,9 @@ function NewsFeedTab({ anniversaries, summary }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function CalendarTab({ prominentDays, planning, onMonthChange }) {
   const today = new Date();
-  const [viewDate,    setViewDate]    = useState(new Date(today.getFullYear(), today.getMonth(), 1));
-  const [selected,    setSelected]    = useState(null);
-  const [regionFilter, setRegionFilter] = useState('');   // '' | 'RAJ' | 'MP' | 'CG'
+  const [viewDate,     setViewDate]     = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+  const [selected,     setSelected]     = useState(null);
+  const [regionFilter, setRegionFilter] = useState('');
 
   const navigate = (delta) => {
     const nd = new Date(viewDate.getFullYear(), viewDate.getMonth() + delta, 1);
@@ -193,7 +193,6 @@ function CalendarTab({ prominentDays, planning, onMonthChange }) {
     onMonthChange && onMonthChange(yyyyMM(nd));
   };
 
-  // Filter prominentDays by region
   const filteredDays = prominentDays.filter(e => {
     if (!regionFilter) return true;
     if (!e.region || e.region === 'ALL') return true;
@@ -202,7 +201,6 @@ function CalendarTab({ prominentDays, planning, onMonthChange }) {
     return false;
   });
 
-  // Build day map from filteredDays + planning
   const dayMap = {};
   filteredDays.forEach(e => {
     if (!dayMap[e.date]) dayMap[e.date] = [];
@@ -210,103 +208,185 @@ function CalendarTab({ prominentDays, planning, onMonthChange }) {
   });
   planning.forEach(p => {
     const from = p.dateFrom;
-    if (from && !dayMap[from]) dayMap[from] = [];
-    if (from) dayMap[from].push({
-      date: from, label: `Planning: ${p.editorsStory || p.campaign || p.event || p.branch}`,
+    if (!from) return;
+    if (!dayMap[from]) dayMap[from] = [];
+    dayMap[from].push({
+      date: from,
+      label: `Planning: ${p.editorsStory || p.campaign || p.event || p.branch}`,
       type: 'media', color: '#7c3aed',
       angle: `Editor's story: ${p.editorsStory || ''} | Event: ${p.event || ''} | Campaign: ${p.campaign || ''}`,
       source: 'planning',
     });
   });
 
-  // Calendar grid
   const yr = viewDate.getFullYear();
   const mo = viewDate.getMonth();
-  const firstDay = new Date(yr, mo, 1).getDay(); // 0=Sun
+  const firstDay    = new Date(yr, mo, 1).getDay();
   const daysInMonth = new Date(yr, mo + 1, 0).getDate();
-  const todayStr = todayISO();
-  const monthLabel = viewDate.toLocaleDateString('en-IN', { month:'long', year:'numeric' });
+  const todayStr    = todayISO();
+  const monthLabel  = viewDate.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+  const moPrefix    = `${yr}-${String(mo + 1).padStart(2, '0')}`;
 
   const cells = [];
   for (let i = 0; i < firstDay; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
 
   const selectedEvents = selected ? (dayMap[selected] || []) : [];
+  const monthEvents    = Object.entries(dayMap)
+    .filter(([d]) => d.startsWith(moPrefix))
+    .sort(([a], [b]) => a.localeCompare(b));
+
+  const totalEvents = monthEvents.reduce((s, [, evs]) => s + evs.length, 0);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      <div className="lg:col-span-2">
-        {/* Region filter bar */}
-        <div className="card p-3 mb-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-bold mr-1" style={{ color:'var(--muted)' }}>FILTER BY STATE:</span>
-            {REGION_FILTERS.map(rf => (
-              <button key={rf.id}
-                onClick={() => setRegionFilter(rf.id)}
-                className="pill"
+    <div className="space-y-4">
+
+      {/* ── Header strip: month nav + stats + region filter ─────────────────── */}
+      <div className="card overflow-hidden" style={{ padding: 0 }}>
+        {/* Gradient header */}
+        <div className="flex items-center justify-between px-5 py-4"
+          style={{ background: 'linear-gradient(135deg, #d71920 0%, #8c0a0e 100%)' }}>
+          <button onClick={() => navigate(-1)}
+            className="rounded-xl p-2 transition-all hover:scale-110"
+            style={{ background: 'rgba(255,255,255,0.15)', color: '#fff' }}>
+            <ChevronLeft size={20} />
+          </button>
+
+          <div className="text-center">
+            <div className="text-2xl font-black tracking-wide" style={{ color: '#fff' }}>
+              {viewDate.toLocaleDateString('en-IN', { month: 'long' }).toUpperCase()}
+            </div>
+            <div className="text-sm font-semibold mt-0.5" style={{ color: 'rgba(255,255,255,0.75)' }}>
+              {yr} &nbsp;·&nbsp; {totalEvents} event{totalEvents !== 1 ? 's' : ''}
+            </div>
+          </div>
+
+          <button onClick={() => navigate(+1)}
+            className="rounded-xl p-2 transition-all hover:scale-110"
+            style={{ background: 'rgba(255,255,255,0.15)', color: '#fff' }}>
+            <ChevronRight size={20} />
+          </button>
+        </div>
+
+        {/* Region filter row */}
+        <div className="flex items-center gap-2 flex-wrap px-4 py-3 border-t" style={{ borderColor: 'var(--border)' }}>
+          <span className="text-xs font-bold" style={{ color: 'var(--muted)' }}>STATE:</span>
+          {REGION_FILTERS.map(rf => {
+            const count = rf.id === ''
+              ? filteredDays.length
+              : filteredDays.filter(d => !d.region || d.region === rf.id || (d.region === 'MPCG' && (rf.id === 'MP' || rf.id === 'CG'))).length;
+            const active = regionFilter === rf.id;
+            const col = rf.color || '#d71920';
+            return (
+              <button key={rf.id} onClick={() => setRegionFilter(rf.id)}
+                className="pill transition-all"
                 style={{
-                  background: regionFilter === rf.id
-                    ? (rf.color || '#d71920')
-                    : (rf.color ? rf.color + '18' : '#d7192018'),
-                  color:  regionFilter === rf.id ? '#fff' : (rf.color || '#d71920'),
-                  border: `1px solid ${(rf.color || '#d71920')}33`,
-                  fontWeight: regionFilter === rf.id ? 700 : 400,
+                  background: active ? col : col + '15',
+                  color:      active ? '#fff' : col,
+                  border:     `1.5px solid ${active ? col : col + '40'}`,
+                  fontWeight: active ? 700 : 500,
                   cursor: 'pointer',
                 }}>
                 {rf.label}
-                <span className="ml-1 opacity-70 text-xs">
-                  ({filteredDays.filter(d => rf.id === '' || !d.region || d.region === rf.id || (d.region === 'MPCG' && (rf.id==='MP'||rf.id==='CG'))).length})
+                <span className="ml-1.5 rounded-full px-1.5 py-0.5 text-xs"
+                  style={{ background: active ? 'rgba(255,255,255,0.25)' : col + '25', fontWeight: 700 }}>
+                  {count}
                 </span>
               </button>
-            ))}
-          </div>
+            );
+          })}
         </div>
+      </div>
 
-        {/* Month nav */}
-        <div className="card p-4">
-          <div className="flex items-center justify-between mb-4">
-            <button onClick={() => navigate(-1)} className="btn-ghost p-2 rounded-lg">
-              <ChevronLeft size={18} />
-            </button>
-            <h3 className="font-bold text-base">{monthLabel}</h3>
-            <button onClick={() => navigate(+1)} className="btn-ghost p-2 rounded-lg">
-              <ChevronRight size={18} />
-            </button>
-          </div>
+      {/* ── Main grid + side panel ───────────────────────────────────────────── */}
+      <div className="grid gap-4 lg:grid-cols-3">
 
+        {/* Calendar grid */}
+        <div className="lg:col-span-2 card p-4">
           {/* Day-of-week headers */}
-          <div className="grid grid-cols-7 mb-1">
-            {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
-              <div key={d} className="text-center text-xs font-semibold py-1" style={{ color:'var(--muted)' }}>{d}</div>
+          <div className="grid grid-cols-7 mb-2">
+            {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d, i) => (
+              <div key={d} className="text-center text-xs font-bold py-1.5 rounded"
+                style={{
+                  color: i === 0 || i === 6 ? '#d71920' : 'var(--muted)',
+                }}>
+                {d}
+              </div>
             ))}
           </div>
 
           {/* Day cells */}
-          <div className="grid grid-cols-7 gap-0.5">
+          <div className="grid grid-cols-7 gap-1">
             {cells.map((day, i) => {
               if (!day) return <div key={i} />;
-              const iso = `${yr}-${String(mo+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+              const iso    = `${moPrefix}-${String(day).padStart(2, '0')}`;
               const events = dayMap[iso] || [];
               const isToday = iso === todayStr;
               const isSel   = iso === selected;
+              const isSun   = new Date(iso).getDay() === 0;
+              const isSat   = new Date(iso).getDay() === 6;
+
               return (
                 <button key={i}
                   onClick={() => setSelected(iso === selected ? null : iso)}
-                  className="rounded-lg p-1 text-center transition-colors"
+                  className="relative flex flex-col items-center rounded-xl transition-all duration-150"
                   style={{
-                    background: isSel ? '#d71920' : isToday ? '#d7192018' : events.length ? 'var(--bg)' : 'transparent',
-                    color: isSel ? '#fff' : isToday ? '#d71920' : 'inherit',
-                    border: isToday && !isSel ? '1px solid #d71920' : '1px solid transparent',
+                    minHeight: 64,
+                    padding: '6px 4px 4px',
+                    background: isSel
+                      ? 'linear-gradient(135deg,#d71920,#8c0a0e)'
+                      : isToday
+                        ? '#d7192012'
+                        : events.length
+                          ? 'var(--bg)'
+                          : 'transparent',
+                    color: isSel ? '#fff' : isToday ? '#d71920' : isSun ? '#d71920' : 'inherit',
+                    border: isToday && !isSel
+                      ? '2px solid #d71920'
+                      : isSel
+                        ? '2px solid #d71920'
+                        : events.length
+                          ? '1.5px solid var(--border)'
+                          : '1.5px solid transparent',
+                    boxShadow: isSel ? '0 4px 14px rgba(215,25,32,0.35)' : 'none',
                     cursor: 'pointer',
-                    minHeight: 48,
+                    transform: isSel ? 'scale(1.05)' : 'scale(1)',
                   }}>
-                  <div className="text-xs font-semibold">{day}</div>
+
+                  {/* Today badge */}
+                  {isToday && !isSel && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full"
+                      style={{ background: '#d71920' }} />
+                  )}
+
+                  {/* Day number */}
+                  <span className="text-sm font-bold leading-none mb-1">{day}</span>
+
+                  {/* Event name(s) — show first label truncated */}
                   {events.length > 0 && (
-                    <div className="flex justify-center flex-wrap gap-0.5 mt-0.5">
-                      {events.slice(0, 3).map((e, ei) => (
-                        <span key={ei} className="w-1.5 h-1.5 rounded-full"
-                          style={{ background: isSel ? '#fff' : e.color || '#888' }} />
+                    <div className="w-full space-y-0.5 px-0.5">
+                      {events.slice(0, 2).map((e, ei) => (
+                        <div key={ei}
+                          className="rounded text-center leading-tight"
+                          style={{
+                            background: isSel ? 'rgba(255,255,255,0.2)' : (e.color || '#888') + '22',
+                            color:      isSel ? '#fff' : e.color || '#888',
+                            fontSize: 9,
+                            fontWeight: 700,
+                            padding: '1px 3px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            maxWidth: '100%',
+                          }}>
+                          {e.label.split(' ').slice(0, 3).join(' ')}
+                        </div>
                       ))}
+                      {events.length > 2 && (
+                        <div className="text-center" style={{ fontSize: 9, color: isSel ? 'rgba(255,255,255,0.7)' : 'var(--muted)' }}>
+                          +{events.length - 2}
+                        </div>
+                      )}
                     </div>
                   )}
                 </button>
@@ -315,106 +395,160 @@ function CalendarTab({ prominentDays, planning, onMonthChange }) {
           </div>
 
           {/* Legend */}
-          <div className="mt-4">
-            <div className="text-xs font-semibold mb-1.5" style={{ color:'var(--muted)' }}>NATIONAL / ALL STATES</div>
-            <div className="flex flex-wrap gap-3 text-xs mb-3" style={{ color:'var(--muted)' }}>
-              {['national','festival','state','media','health','environment','sports','social'].map(t => (
-                <span key={t} className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full" style={{ background: TYPE_COLOR[t] }} />
-                  {DOT_LABEL[t]}
-                </span>
-              ))}
-            </div>
-            <div className="text-xs font-semibold mb-1.5" style={{ color:'var(--muted)' }}>HYPERLOCAL EVENTS</div>
-            <div className="flex flex-wrap gap-3 text-xs" style={{ color:'var(--muted)' }}>
-              {['local_raj','local_mp','local_cg','local_mpcg'].map(t => (
-                <span key={t} className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded" style={{ background: TYPE_COLOR[t] }} />
-                  {DOT_LABEL[t]}
+          <div className="mt-4 pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs" style={{ color: 'var(--muted)' }}>
+              {Object.entries(DOT_LABEL).map(([k, label]) => (
+                <span key={k} className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                    style={{ background: TYPE_COLOR[k] || '#888' }} />
+                  {label}
                 </span>
               ))}
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Event detail panel */}
-      <div>
-        {selected ? (
-          <SectionCard title={fmtDate(selected)}>
-            {selectedEvents.length === 0 ? (
-              <p className="text-sm py-4" style={{ color:'var(--muted)' }}>No events on this day.</p>
-            ) : (
-              <div className="space-y-3">
-                {selectedEvents.map((e, i) => (
-                  <div key={i} className="rounded-lg p-3"
-                    style={{ background:'var(--bg)', borderLeft:`3px solid ${e.color || '#888'}` }}>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-semibold rounded px-1.5 py-0.5"
-                        style={{ background:(e.color||'#888')+'18', color:e.color||'#888' }}>
-                        {DOT_LABEL[e.type] || e.type}
-                      </span>
-                      {e.region && REGION_BADGE[e.region] && (
-                        <span className="text-xs font-bold rounded px-1.5 py-0.5"
-                          style={{ background: REGION_BADGE[e.region].color+'22', color: REGION_BADGE[e.region].color }}>
-                          📍 {REGION_BADGE[e.region].label}
-                        </span>
-                      )}
-                      {e.source === 'planning' && (
-                        <span className="text-xs font-semibold rounded px-1.5 py-0.5"
-                          style={{ background:'#7c3aed18', color:'#7c3aed' }}>Planning</span>
-                      )}
-                    </div>
-                    <div className="font-semibold text-sm mt-1">{e.label}</div>
-                    {e.angle && (
-                      <div className="mt-2 text-xs leading-relaxed" style={{ color:'var(--muted)' }}>
-                        <span className="font-semibold">Story angles: </span>{e.angle}
-                      </div>
-                    )}
-                  </div>
-                ))}
+        {/* ── Side panel ────────────────────────────────────────────────────── */}
+        <div className="space-y-3">
+          {selected ? (
+            <>
+              {/* Selected day header */}
+              <div className="rounded-2xl p-4"
+                style={{ background: 'linear-gradient(135deg,#d71920,#8c0a0e)', color: '#fff' }}>
+                <div className="text-xs font-semibold opacity-75 mb-1">SELECTED DATE</div>
+                <div className="text-xl font-black">
+                  {new Date(selected + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long' })}
+                </div>
+                <div className="text-sm opacity-80">
+                  {new Date(selected + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+                </div>
+                <button onClick={() => setSelected(null)}
+                  className="mt-2 text-xs underline opacity-70 hover:opacity-100">
+                  ← Back to month view
+                </button>
               </div>
-            )}
-          </SectionCard>
-        ) : (
-          <SectionCard title={`Events — ${monthLabel}`}>
-            <p className="text-xs mb-3" style={{ color:'var(--muted)' }}>Click any day to see details and story angles.</p>
-            <div className="space-y-2">
-              {Object.entries(dayMap)
-                .filter(([d]) => d.startsWith(`${yr}-${String(mo+1).padStart(2,'0')}`))
-                .sort(([a],[b]) => a.localeCompare(b))
-                .slice(0, 12)
-                .map(([date, events]) => (
-                  <button key={date} onClick={() => setSelected(date)}
-                    className="w-full text-left rounded-lg p-3 hover:bg-opacity-80 transition-colors"
-                    style={{ background:'var(--bg)', cursor:'pointer' }}>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold" style={{ color:'var(--muted)', minWidth:70 }}>
-                        {new Date(date+'T00:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short'})}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-semibold truncate">{events[0].label}</div>
-                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                          {events[0].region && REGION_BADGE[events[0].region] && (
-                            <span className="text-xs rounded px-1 py-0.5 font-semibold"
-                              style={{ background: REGION_BADGE[events[0].region].color+'22', color: REGION_BADGE[events[0].region].color, fontSize: 10 }}>
-                              📍 {REGION_BADGE[events[0].region].label}
-                            </span>
-                          )}
-                          {events.length > 1 && <span className="text-xs" style={{color:'var(--muted)'}}>+{events.length-1} more</span>}
+
+              {selectedEvents.length === 0 ? (
+                <div className="card p-6 text-center">
+                  <div className="text-3xl mb-2">📭</div>
+                  <p className="text-sm" style={{ color: 'var(--muted)' }}>No events on this day.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {selectedEvents.map((e, i) => (
+                    <div key={i} className="card p-4 transition-all hover:shadow-md"
+                      style={{ borderLeft: `4px solid ${e.color || '#888'}` }}>
+                      <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                        <span className="text-xs font-bold rounded-full px-2.5 py-1"
+                          style={{ background: (e.color || '#888') + '20', color: e.color || '#888' }}>
+                          {DOT_LABEL[e.type] || e.type}
+                        </span>
+                        {e.region && REGION_BADGE[e.region] && (
+                          <span className="text-xs font-bold rounded-full px-2 py-1"
+                            style={{ background: REGION_BADGE[e.region].color + '20', color: REGION_BADGE[e.region].color }}>
+                            📍 {REGION_BADGE[e.region].label}
+                          </span>
+                        )}
+                        {e.source === 'planning' && (
+                          <span className="text-xs font-bold rounded-full px-2 py-1"
+                            style={{ background: '#7c3aed18', color: '#7c3aed' }}>
+                            📋 Planning
+                          </span>
+                        )}
+                      </div>
+                      <div className="font-bold text-sm leading-snug">{e.label}</div>
+                      {e.angle && (
+                        <div className="mt-2 rounded-lg p-2 text-xs leading-relaxed"
+                          style={{ background: 'var(--bg)', color: 'var(--muted)' }}>
+                          <span className="font-bold" style={{ color: 'var(--text)' }}>Story angles: </span>
+                          {e.angle}
                         </div>
-                      </div>
-                      <div className="flex gap-1">
-                        {events.slice(0,3).map((e,i) => (
-                          <span key={i} className="w-2 h-2 rounded-full" style={{background:e.color||'#888'}} />
-                        ))}
-                      </div>
+                      )}
                     </div>
-                  </button>
-                ))}
-            </div>
-          </SectionCard>
-        )}
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {/* Month summary card */}
+              <div className="card p-4">
+                <div className="text-xs font-bold mb-3" style={{ color: 'var(--muted)' }}>
+                  {monthLabel.toUpperCase()} — ALL EVENTS
+                </div>
+                {monthEvents.length === 0 ? (
+                  <p className="text-sm text-center py-4" style={{ color: 'var(--muted)' }}>
+                    No events this month.
+                  </p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {monthEvents.map(([date, events]) => {
+                      const d    = new Date(date + 'T00:00:00');
+                      const isT  = date === todayStr;
+                      return (
+                        <button key={date} onClick={() => setSelected(date)}
+                          className="w-full text-left rounded-xl px-3 py-2.5 transition-all hover:scale-[1.01]"
+                          style={{
+                            background: isT ? '#d7192010' : 'var(--bg)',
+                            border: isT ? '1.5px solid #d7192040' : '1.5px solid transparent',
+                            cursor: 'pointer',
+                          }}>
+                          <div className="flex items-center gap-2.5">
+                            {/* Date block */}
+                            <div className="flex-shrink-0 w-10 h-10 rounded-lg flex flex-col items-center justify-center"
+                              style={{ background: isT ? '#d71920' : (events[0].color || '#888') + '18' }}>
+                              <span className="text-xs font-black leading-none"
+                                style={{ color: isT ? '#fff' : events[0].color || '#888' }}>
+                                {d.getDate()}
+                              </span>
+                              <span className="text-xs leading-none mt-0.5"
+                                style={{ color: isT ? 'rgba(255,255,255,0.8)' : 'var(--muted)', fontSize: 9 }}>
+                                {d.toLocaleDateString('en-IN', { weekday: 'short' })}
+                              </span>
+                            </div>
+
+                            {/* Event info */}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-semibold truncate"
+                                style={{ color: isT ? '#d71920' : 'inherit' }}>
+                                {events[0].label}
+                              </div>
+                              <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                                {events[0].region && REGION_BADGE[events[0].region] && (
+                                  <span className="rounded px-1 py-0.5 font-bold"
+                                    style={{ fontSize: 9, background: REGION_BADGE[events[0].region].color + '20', color: REGION_BADGE[events[0].region].color }}>
+                                    📍{REGION_BADGE[events[0].region].label}
+                                  </span>
+                                )}
+                                {events.length > 1 && (
+                                  <span className="text-xs" style={{ color: 'var(--muted)', fontSize: 10 }}>
+                                    +{events.length - 1} more
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Color dots */}
+                            <div className="flex flex-col gap-1 flex-shrink-0">
+                              {events.slice(0, 3).map((e, i) => (
+                                <span key={i} className="w-2 h-2 rounded-full"
+                                  style={{ background: e.color || '#888' }} />
+                              ))}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <p className="text-center text-xs" style={{ color: 'var(--muted)' }}>
+                Click any day on the calendar to see story angles
+              </p>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

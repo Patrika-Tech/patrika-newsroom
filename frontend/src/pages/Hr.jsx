@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
-  CartesianGrid, Cell, PieChart, Pie,
+  CartesianGrid, Cell, PieChart, Pie, LineChart, Line, Legend,
 } from 'recharts';
 import {
   X, CalendarClock, Users, UserCheck, UserX,
@@ -70,11 +70,12 @@ function downloadExcel(rows, includesSalary, filename = 'employees') {
 const COLORS = ['#C9A227', '#d71920', '#3b82f6', '#10b981', '#8b5cf6', '#f97316', '#06b6d4'];
 const GRADE_COLOR = { A: '#10b981', B: '#3b82f6', C: '#C9A227', D: '#d71920' };
 const TABS = [
-  { key: 'overview',    label: 'Overview',           icon: BarChart2 },
-  { key: 'recruitment', label: 'Recruitment',        icon: Briefcase },
-  { key: 'training',    label: 'Training & Induction', icon: Star },
-  { key: 'grading',    label: 'PLI & Grading',       icon: ShieldCheck },
-  { key: 'admin',      label: 'Admin',               icon: Building2 },
+  { key: 'overview',     label: 'Overview',            icon: BarChart2  },
+  { key: 'appointment',  label: 'Appointment',         icon: FileText   },
+  { key: 'recruitment',  label: 'Recruitment',         icon: Briefcase  },
+  { key: 'training',     label: 'Training & Induction',icon: Star       },
+  { key: 'grading',      label: 'PLI & Grading',       icon: ShieldCheck},
+  { key: 'admin',        label: 'Admin',               icon: Building2  },
 ];
 
 const currentMonth = () => new Date().toISOString().slice(0, 7);
@@ -174,6 +175,7 @@ export default function Hr() {
           onDownload={() => downloadExcel(filtered, canViewHr())}
         />
       )}
+      {tab === 'appointment'  && <AppointmentTab canEditHr={canEditHr} globalState={globalState} globalBranch={globalBranch} />}
       {tab === 'recruitment'  && <RecruitmentTab />}
       {tab === 'training'     && <TrainingTab emps={filtered} canEditHr={canEditTraining} />}
       {tab === 'grading'      && <GradingTab  emps={filtered} canEditHr={canEditGrading} canViewHr={canViewHr} />}
@@ -358,6 +360,447 @@ function OverviewTab({ emps, filtered, rets, loading, ageBuckets, deptBuckets,
         </div>
       </SectionCard>
 
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// APPOINTMENT TAB  (reads existing `appointment` table)
+// ═══════════════════════════════════════════════════════════════════════════════
+const PIPELINE_STAGES = ['SE Pending','SE Approved','Sent to HO','HO Interviewed','With Directors','Director Approved','Joined'];
+const STAGE_COLOR = {
+  'SE Pending':        '#6b7280',
+  'SE Approved':       '#3b82f6',
+  'Sent to HO':        '#f97316',
+  'HO Interviewed':    '#8b5cf6',
+  'With Directors':    '#C9A227',
+  'Director Approved': '#10b981',
+  'Joined':            '#d71920',
+};
+const PROFILE_COLORS = ['#d71920','#3b82f6','#10b981','#C9A227','#8b5cf6','#f97316','#06b6d4','#ec4899'];
+
+function fmtSalary(v) {
+  if (!v || v === 0) return '—';
+  if (v >= 100000) return `₹${(v/100000).toFixed(1)}L`;
+  if (v >= 1000)   return `₹${(v/1000).toFixed(0)}K`;
+  return `₹${v}`;
+}
+function fmtDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function AppointmentTab({ canEditHr, globalState, globalBranch }) {
+  const [data,        setData]        = useState({ appointments: [], stats: {} });
+  const [loading,     setLoading]     = useState(true);
+  const [search,      setSearch]      = useState('');
+  const [stageFilter, setStageFilter] = useState('all');
+  const [profFilter,  setProfFilter]  = useState('all');
+  const [expanded,    setExpanded]    = useState(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.hrAppointments().then(d => setData(d || { appointments: [], stats: {} })).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const visible = useMemo(() => {
+    return (data.appointments || []).filter(a => {
+      if (globalState  !== 'All' && a.State  !== globalState)  return false;
+      if (globalBranch !== 'All' && a.Branch !== globalBranch) return false;
+      if (stageFilter !== 'all' && a._stage !== stageFilter)   return false;
+      if (profFilter  !== 'all' && a.profile !== profFilter)   return false;
+      if (search) {
+        const q = search.toLowerCase();
+        return (a.name||'').toLowerCase().includes(q)
+          || (a.Branch||'').toLowerCase().includes(q)
+          || (a.profile||'').toLowerCase().includes(q)
+          || (a.present_company||'').toLowerCase().includes(q)
+          || (a.mobile||'').toLowerCase().includes(q);
+      }
+      return true;
+    });
+  }, [data.appointments, globalState, globalBranch, stageFilter, profFilter, search]);
+
+  const stats = data.stats || {};
+
+  // Chart data
+  const profileData = useMemo(() => Object.entries(stats.byProfile || {})
+    .map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value), [stats]);
+
+  const stateData = useMemo(() => Object.entries(stats.byState || {})
+    .map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 10), [stats]);
+
+  const monthlyData = useMemo(() => {
+    const months = {};
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
+      const key   = d.toISOString().slice(0, 7);
+      const label = d.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+      months[key] = { month: label, count: stats.byMonth?.[key] || 0 };
+    }
+    return Object.values(months);
+  }, [stats]);
+
+  const growthData = useMemo(() =>
+    Object.entries(stats.growthBuckets || {}).map(([name, value]) => ({ name, value })), [stats]);
+
+  const downloadExcel = () => {
+    const rows = visible.map(a => ({
+      '#':                 a.id,
+      'Name':              a.name           || '',
+      'Profile':           a.profile        || '',
+      'Type':              a.appoinment_type || '',
+      'State':             a.State          || '',
+      'Branch':            a.Branch         || '',
+      'Location':          a.location       || '',
+      'Gender':            a.gender         || '',
+      'Mobile':            a.mobile         || '',
+      'Experience':        `${a.exp_year || 0}y ${a.exp_month || 0}m`,
+      'Present Company':   a.present_company || '',
+      'Present CTC (₹)':  a.present_ctc    || '',
+      'Expected CTC (₹)': a.expected_ctc   || '',
+      'Decided Salary (₹)':a.decided_salary || '',
+      'Growth %':          a.growth         || '',
+      'SE Status':         a.se_level_status || '',
+      'HO Interview':      a.ho_interview_status || '',
+      'Director Status':   a.director_status || '',
+      'Date of Joining':   a.date_of_joining ? fmtDate(a.date_of_joining) : '',
+      'Pipeline Stage':    a._stage         || '',
+      'Appointment Reason':a.appointment_reason || '',
+      'Submitted On':      a.inserted_on ? fmtDate(a.inserted_on) : '',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = Object.keys(rows[0] || {}).map(k => ({ wch: Math.max(k.length, 12) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Appointments');
+    XLSX.writeFile(wb, `appointments_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20 gap-2" style={{ color: 'var(--muted)' }}>
+        <Loader2 size={20} className="animate-spin" /> Loading appointment data…
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+
+      {/* ── KPI tiles ─────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Tile icon={Users}        label="Total Candidates"   value={stats.total || 0}                         color="#3b82f6" />
+        <Tile icon={UserCheck}    label="Joined"             value={stats.pipeline?.Joined || 0}              color="#10b981" />
+        <Tile icon={CheckCircle2} label="Director Approved"  value={stats.pipeline?.['Director Approved']||0} color="#C9A227" />
+        <Tile icon={Clock}        label="Pending at SE"      value={stats.pipeline?.['SE Pending'] || 0}      color="#d71920" />
+      </div>
+
+      {/* ── Pipeline funnel ───────────────────────────────────────────────────── */}
+      <SectionCard title="Hiring Pipeline — Approval Funnel">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+          {PIPELINE_STAGES.map(stage => {
+            const count = stats.pipeline?.[stage] || 0;
+            const pct   = stats.total ? Math.round((count / stats.total) * 100) : 0;
+            const col   = STAGE_COLOR[stage];
+            return (
+              <button key={stage}
+                onClick={() => setStageFilter(stageFilter === stage ? 'all' : stage)}
+                className="rounded-xl p-3 text-center transition-all hover:scale-105"
+                style={{
+                  background: stageFilter === stage ? col : col + '15',
+                  border: `2px solid ${stageFilter === stage ? col : col + '40'}`,
+                  cursor: 'pointer',
+                }}>
+                <div className="text-2xl font-black" style={{ color: stageFilter === stage ? '#fff' : col }}>{count}</div>
+                <div className="text-xs font-semibold mt-0.5 leading-tight" style={{ color: stageFilter === stage ? 'rgba(255,255,255,0.85)' : col }}>{stage}</div>
+                <div className="text-xs mt-1" style={{ color: stageFilter === stage ? 'rgba(255,255,255,0.6)' : 'var(--muted)' }}>{pct}%</div>
+              </button>
+            );
+          })}
+        </div>
+        {stageFilter !== 'all' && (
+          <button onClick={() => setStageFilter('all')} className="mt-2 text-xs btn-ghost">
+            <X size={11} className="inline mr-1" />Clear filter
+          </button>
+        )}
+      </SectionCard>
+
+      {/* ── Charts row ────────────────────────────────────────────────────────── */}
+      <div className="grid gap-4 lg:grid-cols-3">
+
+        {/* Monthly submissions */}
+        <SectionCard title="Monthly Submissions (Last 12 Months)" className="lg:col-span-2">
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={monthlyData} margin={{ left: -20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="month" stroke="var(--muted)" fontSize={11} />
+              <YAxis allowDecimals={false} stroke="var(--muted)" fontSize={11} />
+              <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12 }} />
+              <Bar dataKey="count" name="Candidates" radius={[6, 6, 0, 0]}>
+                {monthlyData.map((_, i) => (
+                  <Cell key={i} fill={i === monthlyData.length - 1 ? '#d71920' : '#3b82f6'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </SectionCard>
+
+        {/* Profile breakdown */}
+        <SectionCard title="By Profile / Role">
+          <ResponsiveContainer width="100%" height={200}>
+            <PieChart>
+              <Pie data={profileData} dataKey="value" nameKey="name"
+                cx="50%" cy="50%" outerRadius={72} fontSize={10}
+                label={({ name, value }) => `${name}: ${value}`} labelLine={false}>
+                {profileData.map((_, i) => <Cell key={i} fill={PROFILE_COLORS[i % PROFILE_COLORS.length]} />)}
+              </Pie>
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+        </SectionCard>
+      </div>
+
+      {/* ── State bar + Salary growth ─────────────────────────────────────────── */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <SectionCard title="State-wise Candidates">
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={stateData} layout="vertical" margin={{ left: 0, right: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis type="number" allowDecimals={false} stroke="var(--muted)" fontSize={11} />
+              <YAxis type="category" dataKey="name" width={80} stroke="var(--muted)" fontSize={11} />
+              <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12 }} />
+              <Bar dataKey="value" name="Count" radius={[0, 6, 6, 0]}>
+                {stateData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </SectionCard>
+
+        <SectionCard title="Salary Growth Distribution">
+          <div className="mb-3 flex items-center gap-6 text-sm">
+            <div>
+              <div className="text-xs" style={{ color: 'var(--muted)' }}>Freshers</div>
+              <div className="font-bold text-lg">{stats.freshers || 0}</div>
+            </div>
+            <div>
+              <div className="text-xs" style={{ color: 'var(--muted)' }}>Experienced</div>
+              <div className="font-bold text-lg">{stats.experienced || 0}</div>
+            </div>
+            <div>
+              <div className="text-xs" style={{ color: 'var(--muted)' }}>Avg Decided CTC</div>
+              <div className="font-bold text-lg">{fmtSalary(stats.avgDecidedSalary)}</div>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={140}>
+            <BarChart data={growthData} margin={{ left: -20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="name" stroke="var(--muted)" fontSize={10} />
+              <YAxis allowDecimals={false} stroke="var(--muted)" fontSize={11} />
+              <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12 }} />
+              <Bar dataKey="value" name="Candidates" radius={[4, 4, 0, 0]}>
+                {growthData.map((e, i) => (
+                  <Cell key={i} fill={e.name === 'Negative (cut)' ? '#d71920' : '#10b981'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </SectionCard>
+      </div>
+
+      {/* ── Candidate table ───────────────────────────────────────────────────── */}
+      <SectionCard
+        title={`Candidates (${visible.length})`}
+        action={
+          <button onClick={downloadExcel} className="btn-ghost flex items-center gap-1.5 text-sm">
+            <Download size={14} /> Excel
+          </button>
+        }
+      >
+        {/* Filters */}
+        <div className="flex flex-wrap gap-2 mb-3">
+          <input
+            type="text" placeholder="Search name, branch, company, mobile…"
+            value={search} onChange={e => setSearch(e.target.value)}
+            className="input py-1.5 text-sm flex-1 min-w-[180px]"
+          />
+          <select value={profFilter} onChange={e => setProfFilter(e.target.value)} className="input py-1.5 text-sm">
+            <option value="all">All Profiles</option>
+            {Object.keys(stats.byProfile || {}).sort().map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <select value={stageFilter} onChange={e => setStageFilter(e.target.value)} className="input py-1.5 text-sm">
+            <option value="all">All Stages</option>
+            {PIPELINE_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          {(search || stageFilter !== 'all' || profFilter !== 'all') && (
+            <button onClick={() => { setSearch(''); setStageFilter('all'); setProfFilter('all'); }} className="btn-ghost py-1.5 text-sm">
+              <X size={13} className="inline mr-1" />Clear
+            </button>
+          )}
+        </div>
+
+        {visible.length === 0 ? (
+          <div className="text-center py-10" style={{ color: 'var(--muted)' }}>
+            <Briefcase size={32} className="mx-auto mb-2 opacity-30" />
+            <p className="text-sm">No candidates match the current filters.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {visible.map((a) => {
+              const isOpen  = expanded === a.id;
+              const stage   = a._stage || 'SE Pending';
+              const col     = STAGE_COLOR[stage] || '#888';
+              const expStr  = [a.exp_year > 0 && `${a.exp_year}y`, a.exp_month > 0 && `${a.exp_month}m`].filter(Boolean).join(' ') || '0';
+              const growth  = Number(a.growth);
+              return (
+                <div key={a.id} className="rounded-xl overflow-hidden"
+                  style={{ border: `1.5px solid ${isOpen ? col : 'var(--border)'}` }}>
+
+                  {/* Row header */}
+                  <button
+                    className="w-full text-left px-4 py-3 flex items-center gap-3 transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                    onClick={() => setExpanded(isOpen ? null : a.id)}
+                  >
+                    {/* Photo */}
+                    {a.candidate_photo ? (
+                      <img src={a.candidate_photo} alt={a.name}
+                        className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                        onError={e => { e.target.style.display = 'none'; }} />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold text-sm"
+                        style={{ background: col }}>
+                        {(a.name||'?')[0].toUpperCase()}
+                      </div>
+                    )}
+
+                    {/* Name + profile + location */}
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-sm">{a.name}</div>
+                      <div className="text-xs flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5" style={{ color: 'var(--muted)' }}>
+                        <span>{a.profile || '—'}</span>
+                        <span>·</span>
+                        <span>{a.Branch}, {a.State}</span>
+                        <span>·</span>
+                        <span>{expStr} exp</span>
+                        {a.present_company && <><span>·</span><span>{a.present_company}</span></>}
+                      </div>
+                    </div>
+
+                    {/* Salary info */}
+                    <div className="hidden sm:flex flex-col items-end mr-3">
+                      <div className="text-xs font-bold">{fmtSalary(a.decided_salary || a.expected_ctc)}</div>
+                      <div className="text-xs" style={{ color: !isNaN(growth) && growth < 0 ? '#d71920' : '#10b981' }}>
+                        {!isNaN(growth) ? `${growth > 0 ? '+' : ''}${growth}% growth` : ''}
+                      </div>
+                    </div>
+
+                    {/* Stage badge */}
+                    <span className="flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-bold text-white hidden md:inline-block"
+                      style={{ background: col }}>{stage}</span>
+
+                    <ChevronDown size={16} className="flex-shrink-0 transition-transform" style={{ color: 'var(--muted)', transform: isOpen ? 'rotate(180deg)' : '' }} />
+                  </button>
+
+                  {/* Expanded detail */}
+                  {isOpen && (
+                    <div className="px-4 pb-4 pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-4 text-sm mb-4">
+                        <Detail label="Mobile"          value={a.mobile} />
+                        <Detail label="Gender"          value={a.gender} />
+                        <Detail label="DOB"             value={fmtDate(a.dob)} />
+                        <Detail label="Type"            value={a.appoinment_type} />
+                        <Detail label="Is Fresher"      value={a.is_fresher == 1 ? 'Yes' : 'No'} />
+                        <Detail label="Location"        value={a.location} />
+                        <Detail label="Company Location"value={a.company_location} />
+                        <Detail label="Exp. Designation"value={a.exp_designation} />
+                        <Detail label="Salary Format"   value={a.salary_format} />
+                        <Detail label="Present CTC"     value={fmtSalary(a.present_ctc)} />
+                        <Detail label="Expected CTC"    value={fmtSalary(a.expected_ctc)} />
+                        <Detail label="Decided Salary"  value={fmtSalary(a.decided_salary)} />
+                        <Detail label="Final CTC"       value={fmtSalary(a.final_ctc_salary)} />
+                        <Detail label="Submitted By"    value={a.insert_level} />
+                        <Detail label="Submitted On"    value={fmtDate(a.inserted_on)} />
+                        <Detail label="Date of Joining" value={fmtDate(a.date_of_joining)} />
+                      </div>
+
+                      {/* Appointment reason */}
+                      {a.appointment_reason && (
+                        <div className="mb-3 rounded-lg p-3" style={{ background: 'var(--bg)' }}>
+                          <div className="text-xs font-semibold mb-1" style={{ color: 'var(--muted)' }}>APPOINTMENT REASON</div>
+                          <div className="text-sm leading-relaxed">{a.appointment_reason}</div>
+                        </div>
+                      )}
+
+                      {/* Approval timeline */}
+                      <div className="mb-3">
+                        <div className="text-xs font-semibold mb-2" style={{ color: 'var(--muted)' }}>APPROVAL PIPELINE</div>
+                        <div className="flex flex-wrap gap-2">
+                          <ApprovalStep label="SE Level" status={a.se_level_status} remark={a.se_remark} />
+                          <ApprovalStep label="HO Interview" status={a.ho_interview_status} date={a.proposal_sent_to_ho_date} remark={a.ho_remark} />
+                          <ApprovalStep label="Director" status={a.director_status} date={a.proposal_sent_to_directors_date} remark={a.director_remark} approvedDate={a.director_approval_date} />
+                        </div>
+                      </div>
+
+                      {/* Document links */}
+                      <div className="flex flex-wrap gap-2">
+                        {a.resume && (
+                          <a href={a.resume} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium"
+                            style={{ background: '#3b82f620', color: '#3b82f6' }}>
+                            <FileText size={12} /> Resume
+                          </a>
+                        )}
+                        {a.current_salary_slip && (
+                          <a href={a.current_salary_slip} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium"
+                            style={{ background: '#10b98120', color: '#10b981' }}>
+                            <FileText size={12} /> Salary Slip
+                          </a>
+                        )}
+                        {a.upload_director_approval && (
+                          <a href={a.upload_director_approval} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium"
+                            style={{ background: '#C9A22720', color: '#C9A227' }}>
+                            <FileText size={12} /> Director Approval
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </SectionCard>
+    </div>
+  );
+}
+
+function Detail({ label, value }) {
+  if (!value || value === '—' || value === '₹0' || value === '₹0.0L') return null;
+  return (
+    <div>
+      <div className="text-xs" style={{ color: 'var(--muted)' }}>{label}</div>
+      <div className="font-semibold text-sm">{value}</div>
+    </div>
+  );
+}
+
+function ApprovalStep({ label, status, date, remark, approvedDate }) {
+  const s = (status || '').toLowerCase();
+  const approved = s === 'approved' || s === 'done' || s === 'completed';
+  const rejected = s === 'rejected' || s === 'not_eligible';
+  const col = approved ? '#10b981' : rejected ? '#d71920' : '#C9A227';
+  const displayStatus = status || 'Pending';
+  return (
+    <div className="flex-1 min-w-[140px] rounded-lg p-2.5" style={{ background: col + '12', border: `1px solid ${col}30` }}>
+      <div className="text-xs font-bold mb-1" style={{ color: col }}>{label}</div>
+      <div className="text-xs font-semibold" style={{ color: col }}>{displayStatus}</div>
+      {date && <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>Sent: {fmtDate(date)}</div>}
+      {approvedDate && <div className="text-xs" style={{ color: 'var(--muted)' }}>Approved: {fmtDate(approvedDate)}</div>}
+      {remark && <div className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--muted)' }}>{remark}</div>}
     </div>
   );
 }

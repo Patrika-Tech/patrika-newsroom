@@ -2,8 +2,9 @@
  * POST /api/archive/:id/transcribe
  *
  * Local Hindi transcription — no API key required.
- * Uses @xenova/transformers (Whisper small, quantized ~97 MB).
+ * Uses @xenova/transformers (Whisper medium, quantized ~462 MB).
  * Model downloads once to .model-cache/ on first use.
+ * whisper-medium chosen over whisper-small for proper Devanagari Hindi output.
  *
  * For non-WAV audio (MP3, M4A, OGG…), ffmpeg must be in PATH.
  * Download ffmpeg: https://ffmpeg.org/download.html
@@ -11,6 +12,7 @@
 const path      = require('path');
 const fs        = require('fs');
 const { spawn } = require('child_process');
+const ffmpegBin = require('ffmpeg-static');  // bundled static binary, no system install needed
 const { query }       = require('../_lib/mysql');
 const { requireRole } = require('../_lib/auth');
 const { setCors, handleOptions } = require('../_lib/cors');
@@ -26,11 +28,12 @@ async function getTranscriber() {
   const { pipeline, env } = await import('@xenova/transformers');
   env.cacheDir         = MODEL_CACHE;
   env.allowLocalModels = false;
-  console.log('[transcribe] Loading Whisper model (downloads once ~97 MB)…');
-  _transcriber = await pipeline('automatic-speech-recognition', 'Xenova/whisper-small', {
+  // whisper-medium: ~462 MB, significantly better Hindi (Devanagari) accuracy than whisper-small
+  console.log('[transcribe] Loading Whisper medium model (downloads once ~462 MB on first run)…');
+  _transcriber = await pipeline('automatic-speech-recognition', 'Xenova/whisper-medium', {
     quantized: true,
   });
-  console.log('[transcribe] Whisper model ready.');
+  console.log('[transcribe] Whisper medium model ready.');
   return _transcriber;
 }
 
@@ -38,7 +41,7 @@ async function getTranscriber() {
 function convertToWav(inputPath) {
   const outPath = inputPath + '_16k.wav';
   return new Promise((resolve, reject) => {
-    const ff = spawn('ffmpeg', [
+    const ff = spawn(ffmpegBin, [
       '-y',
       '-i', inputPath,
       '-ar', '16000',
@@ -85,7 +88,7 @@ module.exports = async function handler(req, res) {
   await query("UPDATE archive_files SET transcript_status = 'pending' WHERE id = ?", [id]);
   res.json({
     ok: true,
-    message: 'Transcription started. First run downloads the Whisper model (~97 MB). Please wait a few minutes…',
+    message: 'Transcription started. First run downloads the Whisper medium model (~462 MB) — this may take 5–10 minutes on slow connections. Subsequent runs are fast.',
   });
 
   // ── Background transcription ───────────────────────────────────────────────
@@ -109,11 +112,13 @@ module.exports = async function handler(req, res) {
       }
 
       const result = await transcriber(audioPath, {
-        language: 'hindi',
-        task:     'transcribe',
-        chunk_length_s:  30,
-        stride_length_s:  5,
+        language:          'hindi',
+        task:              'transcribe',   // 'transcribe' keeps Devanagari; 'translate' would give English
+        chunk_length_s:    30,
+        stride_length_s:   5,
         return_timestamps: false,
+        // Force the model to output Hindi tokens — prevents falling back to English/Roman
+        forced_decoder_ids: [[1, null], [2, 50301]],  // 50301 = <|hi|> language token in Whisper
       });
 
       // result may be { text: '…' } or an array of chunks

@@ -54,6 +54,8 @@ class NodeCanvasFactory {
   destroy(cc)     { cc.canvas.width = 0; cc.canvas.height = 0; }
 }
 
+const TESS_CACHE = path.join(__dirname, '..', '..', '.model-cache', 'tesseract');
+
 // ── OCR a PDF -> combined text string ─────────────────────────────────────────
 async function ocrPdf(filePath) {
   await initOcr();
@@ -71,7 +73,10 @@ async function ocrPdf(filePath) {
       await page.render({ canvasContext: cc.context, viewport: vp, canvasFactory }).promise;
     } catch { /* skip tiny/broken pages */ }
     const png = cc.canvas.toBuffer('image/png');
-    const res = await _Tesseract.recognize(png, 'eng+hin', { logger: () => {} });
+    const res = await _Tesseract.recognize(png, 'eng+hin', {
+      logger: () => {},
+      langPath: TESS_CACHE,
+    });
     fullText += res.data.text + '\n\n';
     canvasFactory.destroy(cc);
   }

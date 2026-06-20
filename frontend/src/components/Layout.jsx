@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, PenLine, Factory, Newspaper, Users, Scale, Archive,
-  Sparkles, Bell, BarChart3, Settings, MessageSquare, ClipboardList, Menu, X, Moon, Sun, Globe, LogOut, ChevronDown, Lock
+  Sparkles, Bell, BarChart3, Settings, MessageSquare, ClipboardList, Menu, X, Moon, Sun, Globe, LogOut, ChevronDown, Lock, Radio
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.jsx';
 import { Logo } from './UI.jsx';
@@ -12,6 +12,7 @@ const NAV = [
   { key: 'editorial',  to: '/editorial',  icon: PenLine },
   { key: 'production', to: '/production', icon: Factory },
   { key: 'pages',      to: '/pages',      icon: Newspaper },
+  { key: 'field',      to: '/field',      icon: Radio },
   { key: 'hr',         to: '/hr',         icon: Users },
   { key: 'legal',      to: '/legal',      icon: Scale },
   { key: 'archive',    to: '/archive',    icon: Archive },
