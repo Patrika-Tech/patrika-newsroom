@@ -454,7 +454,7 @@ function GroupsTab({ canEdit }) {
 
   const openGroup = async (g) => {
     const detail = await api.getTaskGroup(g.id).catch(() => null);
-    setSelected(detail || g);
+    setSelected(detail?.group || g);
   };
 
   const deleteGroup = async (g) => {
@@ -542,7 +542,7 @@ function GroupsTab({ canEdit }) {
         </SectionCard>
       )}
 
-      {showForm && <GroupForm onClose={() => setShowForm(false)} onDone={() => { setShowForm(false); loadGroups(); }} />}
+      {showForm && <GroupForm onClose={() => setShowForm(false)} onDone={(msg) => { setShowForm(false); loadGroups(); if (msg) alert('✅ Group created!' + msg); }} />}
     </div>
   );
 }
@@ -589,6 +589,8 @@ function AddMembersDropdown({ assignees, members, onAdd }) {
   );
 }
 
+const AUTO_MEMBER_TYPES = ['RE', 'Chief Reporter', 'Desk Head'];
+
 function GroupForm({ onClose, onDone }) {
   const [form, setForm] = useState({ name: '', description: '', type: 'RE' });
   const [saving, setSaving] = useState(false);
@@ -597,9 +599,15 @@ function GroupForm({ onClose, onDone }) {
   const submit = async () => {
     if (!form.name.trim()) return setErr('Group name is required');
     setSaving(true);
-    try { await api.createTaskGroup(form); onDone(); }
+    try {
+      const r = await api.createTaskGroup(form);
+      const autoMsg = r.auto_members > 0 ? ` ${r.auto_members} members auto-added from employee records.` : '';
+      onDone(autoMsg);
+    }
     catch (e) { setErr(e.message); setSaving(false); }
   };
+
+  const isAutoType = AUTO_MEMBER_TYPES.includes(form.type);
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
@@ -618,6 +626,11 @@ function GroupForm({ onClose, onDone }) {
             <select className="input" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
               {GROUP_TYPES.map(t => <option key={t}>{t}</option>)}
             </select>
+            {isAutoType && (
+              <p style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>
+                ✅ All active <b>{form.type}</b> employees will be auto-added as members.
+              </p>
+            )}
           </div>
           <div>
             <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Description</label>

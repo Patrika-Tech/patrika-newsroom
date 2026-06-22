@@ -167,7 +167,10 @@ module.exports = async function handler(req, res) {
       assignees = [assignee];
     }
 
+    // Batch INSERT all tasks first, then send Telegram non-blocking
     const created = [];
+    const telegramQueue = [];
+
     for (const assignee of assignees) {
       for (const task of taskList) {
         const result = await query(
@@ -185,15 +188,23 @@ module.exports = async function handler(req, res) {
         );
         created.push(result.insertId);
 
-        // Telegram alert
-        await sendTaskTelegram(assignee.telegram_chat_id, {
-          title: task.title.trim(), category, priority, due_date, creatorName,
-          description: task.description,
-        });
+        if (assignee.telegram_chat_id) {
+          telegramQueue.push({ chatId: assignee.telegram_chat_id, task, assignee });
+        }
       }
     }
 
-    return res.status(201).json({ ok: true, ids: created, count: created.length });
+    // Respond immediately — send Telegram in background
+    res.status(201).json({ ok: true, ids: created, count: created.length });
+
+    // Fire-and-forget Telegram notifications
+    for (const { chatId, task } of telegramQueue) {
+      sendTaskTelegram(chatId, {
+        title: task.title.trim(), category, priority, due_date, creatorName,
+        description: task.description,
+      }).catch(e => console.error('[tasks] Telegram failed:', e.message));
+    }
+    return;
   }
 
   res.status(405).json({ error: 'Method not allowed' });

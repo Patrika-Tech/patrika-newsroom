@@ -105,11 +105,50 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: 'Failed to create group: ' + e.message });
     }
 
+    const groupId = result.insertId;
+
+    // Auto-add members when type matches Story_Type in user table
+    const AUTO_TYPES = ['RE', 'Chief Reporter', 'Desk Head'];
+    if (type && AUTO_TYPES.includes(type)) {
+      try {
+        const empConds  = ["Story_Type = ?", "(is_emp_working = 1 OR Status IN ('Working','Active'))"];
+        const empParams = [type];
+
+        // State Head: restrict to their state
+        if (user.role === 'State Head' && user.state) {
+          empConds.push('State = ?');
+          empParams.push(user.state);
+        }
+
+        const members = await query(
+          `SELECT pan_no, EMPNAME, State, Branch, telegram_chat_id
+           FROM \`user\`
+           WHERE ${empConds.join(' AND ')}
+           ORDER BY State, Branch, EMPNAME`,
+          empParams
+        );
+
+        for (const m of members) {
+          await query(
+            `INSERT IGNORE INTO task_group_members (group_id, pan_no, emp_name, telegram_chat_id, state, branch)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [groupId, m.pan_no, m.EMPNAME || '', m.telegram_chat_id || null, m.State || '', m.Branch || '']
+          );
+        }
+      } catch (e) {
+        console.error('[task-groups] Auto-member insert failed:', e.message);
+      }
+    }
+
     const [created] = await query(
-      'SELECT * FROM task_groups WHERE id = ?', [result.insertId]
+      'SELECT * FROM task_groups WHERE id = ?', [groupId]
     ).catch(() => []);
 
-    return res.status(201).json({ ok: true, group: created });
+    const [memberCount] = await query(
+      'SELECT COUNT(*) AS cnt FROM task_group_members WHERE group_id = ?', [groupId]
+    ).catch(() => [{ cnt: 0 }]);
+
+    return res.status(201).json({ ok: true, group: created, auto_members: memberCount?.cnt || 0 });
   }
 
   res.status(405).json({ error: 'Method not allowed' });

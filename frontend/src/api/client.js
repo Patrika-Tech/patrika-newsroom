@@ -14,7 +14,11 @@ async function request(path, opts = {}) {
     },
     ...opts,
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try { const j = await res.json(); msg = j.error || j.message || msg; } catch {}
+    throw new Error(msg);
+  }
   return res.json();
 }
 
@@ -221,7 +225,7 @@ export const api = {
   },
 
   // ── Task Groups ──────────────────────────────────────────────────────────────
-  listTaskGroups:   ()         => request('/task-groups'),
+  listTaskGroups:   ()         => request('/task-groups').then(r => r.groups || r),
   createTaskGroup:  (data)     => request('/task-groups',      { method: 'POST',   body: JSON.stringify(data) }),
   getTaskGroup:     (id)       => request(`/task-groups/${id}`),
   updateTaskGroup:  (id, data) => request(`/task-groups/${id}`, { method: 'PATCH',  body: JSON.stringify(data) }),
