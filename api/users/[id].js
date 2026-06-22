@@ -8,6 +8,11 @@ const { query } = require('../_lib/mysql');
 const { ensureColumn }           = require('../_lib/schema');
 const { requireRole }            = require('../_lib/auth');
 const { setCors, handleOptions } = require('../_lib/cors');
+const { writeActivityLog }       = require('../_lib/activity-log');
+
+function getIP(req) {
+  return req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+}
 
 module.exports = async (req, res) => {
   setCors(res);
@@ -60,6 +65,29 @@ module.exports = async (req, res) => {
         : 'SELECT id, username, name, role, state, branch, 1 AS is_active, created_at FROM users WHERE id = ?';
       const [updated] = await query(selectSql, [id]);
       if (!updated) return res.status(404).json({ error: 'User not found' });
+
+      // Determine what changed for the log message
+      const changeParts = [];
+      if (name)              changeParts.push(`name→"${name}"`);
+      if (role)              changeParts.push(`role→${role}`);
+      if ('state'  in body)  changeParts.push(`state→${state || 'none'}`);
+      if ('branch' in body)  changeParts.push(`branch→${branch || 'none'}`);
+      if (password)          changeParts.push('password changed');
+      if ('is_active' in body) {
+        changeParts.push(is_active ? 'activated' : 'deactivated');
+      }
+      const action = 'is_active' in body && changeParts.length === 1
+        ? (is_active ? 'user_activated' : 'user_deactivated')
+        : 'user_updated';
+
+      writeActivityLog({
+        actor: caller.sub, actorName: caller.name || caller.sub,
+        action,
+        target: updated.username,
+        details: `User "${updated.name}": ${changeParts.join(', ')}`,
+        ip: getIP(req),
+      });
+
       return res.json(updated);
     } catch (err) {
       return res.status(500).json({ error: err.message });
@@ -76,7 +104,15 @@ module.exports = async (req, res) => {
           return res.status(400).json({ error: 'You cannot delete your own account' });
       }
 
+      const [target] = await query('SELECT username, name FROM users WHERE id = ?', [id]);
       await query('DELETE FROM users WHERE id = ?', [id]);
+      writeActivityLog({
+        actor: caller.sub, actorName: caller.name || caller.sub,
+        action: 'user_deleted',
+        target: target?.username || String(id),
+        details: `Deleted user "${target?.name || id}"`,
+        ip: getIP(req),
+      });
       return res.json({ ok: true });
     } catch (err) {
       return res.status(500).json({ error: err.message });

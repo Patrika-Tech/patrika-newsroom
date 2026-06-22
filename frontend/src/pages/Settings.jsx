@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Edit2, Trash2, X, Save, Loader2, Users, Lock, RefreshCw, UserCheck, UserX } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, Save, Loader2, Users, Lock, RefreshCw, UserCheck, UserX, ShieldCheck, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useApp, ROLES } from '../context/AppContext.jsx';
 import { api } from '../api/client.js';
 import { PageHeader, SectionCard, Badge } from '../components/UI.jsx';
@@ -61,6 +61,9 @@ export default function Settings() {
 
         {/* ── User Management — Admin only ─────────────────────────────── */}
         {isAdmin() && <UserManagement />}
+
+        {/* ── Logs (Login + Activity) — Admin only ─────────────────────── */}
+        {isAdmin() && <AdminLogs />}
       </div>
     </div>
   );
@@ -307,6 +310,269 @@ function UserManagement() {
         />
       )}
     </SectionCard>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared helpers for log tables
+// ─────────────────────────────────────────────────────────────────────────────
+const fmtDate = (dt) => dt
+  ? new Date(dt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  : '—';
+
+function LogPager({ page, pages, onPage }) {
+  if (pages <= 1) return null;
+  return (
+    <div className="flex items-center justify-between mt-3 pt-3 text-sm" style={{ borderTop: '1px solid var(--border)' }}>
+      <span style={{ color: 'var(--muted)' }}>Page {page} of {pages}</span>
+      <div className="flex gap-1">
+        <button onClick={() => onPage(p => Math.max(1, p - 1))} disabled={page === 1}
+          className="btn-ghost px-2 py-1 flex items-center gap-1 disabled:opacity-40">
+          <ChevronLeft size={14} /> Prev
+        </button>
+        <button onClick={() => onPage(p => Math.min(pages, p + 1))} disabled={page === pages}
+          className="btn-ghost px-2 py-1 flex items-center gap-1 disabled:opacity-40">
+          Next <ChevronRight size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Combined Admin Logs (Login + Activity) with tab switcher
+// ─────────────────────────────────────────────────────────────────────────────
+function AdminLogs() {
+  const [tab, setTab] = useState('login'); // 'login' | 'activity'
+  return (
+    <SectionCard
+      title="Admin Logs"
+      action={
+        <div className="flex gap-1">
+          {[['login', 'Login Logs'], ['activity', 'Settings Activity']].map(([val, lbl]) => (
+            <button key={val} onClick={() => setTab(val)}
+              className="px-3 py-1 rounded-lg text-xs font-medium transition"
+              style={{
+                background: tab === val ? 'var(--brand)' : 'var(--bg)',
+                color:      tab === val ? '#fff' : 'var(--muted)',
+                border: '1px solid var(--border)',
+              }}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+      }
+    >
+      {tab === 'login'    && <LoginLogsPanel />}
+      {tab === 'activity' && <ActivityLogsPanel />}
+    </SectionCard>
+  );
+}
+
+// ── Login Logs panel ──────────────────────────────────────────────────────────
+const LOGIN_STATUS_COLORS = {
+  success: { bg: '#10b98115', color: '#10b981', label: 'Success' },
+  failed:  { bg: '#f5920015', color: '#f59200', label: 'Failed'  },
+  blocked: { bg: '#d7192015', color: '#d71920', label: 'Blocked' },
+};
+
+function LoginLogsPanel() {
+  const [logs,    setLogs]    = useState([]);
+  const [total,   setTotal]   = useState(0);
+  const [pages,   setPages]   = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [search,  setSearch]  = useState('');
+  const [status,  setStatus]  = useState('');
+  const [page,    setPage]    = useState(1);
+
+  const load = (p) => {
+    setLoading(true);
+    api.loginLogs({ page: p, limit: 50, search: search || '', status: status || '' })
+      .then(d => { setLogs(d.logs || []); setTotal(d.total || 0); setPages(d.pages || 1); })
+      .catch(() => setLogs([]))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { setPage(1); load(1); }, [search, status]); // eslint-disable-line
+  useEffect(() => { load(page); }, [page]); // eslint-disable-line
+
+  return (
+    <>
+      <div className="flex flex-wrap gap-2 mb-3">
+        <div className="relative flex-1 min-w-48">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted)' }} />
+          <input className="input w-full pl-7 text-sm" placeholder="Search username, name, IP…"
+            value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
+        <div className="flex gap-1">
+          {[['', 'All'], ['success', 'Success'], ['failed', 'Failed'], ['blocked', 'Blocked']].map(([val, lbl]) => (
+            <button key={val} onClick={() => setStatus(val)}
+              className="px-3 py-1 rounded-lg text-xs font-medium transition"
+              style={{ background: status === val ? 'var(--brand)' : 'var(--bg)', color: status === val ? '#fff' : 'var(--muted)', border: '1px solid var(--border)' }}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => load(page)} className="btn-ghost px-2 py-1 flex items-center gap-1 text-sm">
+          <RefreshCw size={13} />
+        </button>
+      </div>
+
+      <p className="text-xs mb-2" style={{ color: 'var(--muted)' }}>Total: {total} records</p>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-8 gap-2" style={{ color: 'var(--muted)' }}>
+          <Loader2 size={16} className="animate-spin" /> Loading…
+        </div>
+      ) : (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left" style={{ color: 'var(--muted)' }}>
+                  <th className="p-2">Time</th>
+                  <th className="p-2">Username</th>
+                  <th className="p-2">Name</th>
+                  <th className="p-2">Role</th>
+                  <th className="p-2">Status</th>
+                  <th className="p-2">Reason</th>
+                  <th className="p-2">IP</th>
+                </tr>
+              </thead>
+              <tbody>
+                {logs.length === 0 && (
+                  <tr><td colSpan={7} className="p-6 text-center" style={{ color: 'var(--muted)' }}>No logs found.</td></tr>
+                )}
+                {logs.map(l => {
+                  const sc = LOGIN_STATUS_COLORS[l.status] || LOGIN_STATUS_COLORS.failed;
+                  return (
+                    <tr key={l.id} className="border-t hover:bg-black/5 transition" style={{ borderColor: 'var(--border)' }}>
+                      <td className="p-2 text-xs whitespace-nowrap" style={{ color: 'var(--muted)' }}>{fmtDate(l.logged_at)}</td>
+                      <td className="p-2 font-mono text-xs">{l.username}</td>
+                      <td className="p-2 font-semibold">{l.name || '—'}</td>
+                      <td className="p-2 text-xs">{l.role || '—'}</td>
+                      <td className="p-2">
+                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold"
+                          style={{ background: sc.bg, color: sc.color }}>
+                          <ShieldCheck size={10} /> {sc.label}
+                        </span>
+                      </td>
+                      <td className="p-2 text-xs" style={{ color: 'var(--muted)' }}>{l.reason || '—'}</td>
+                      <td className="p-2 font-mono text-xs">{l.ip || '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <LogPager page={page} pages={pages} onPage={setPage} />
+        </>
+      )}
+    </>
+  );
+}
+
+// ── Activity / Settings Logs panel ────────────────────────────────────────────
+const ACTION_META = {
+  user_created:    { bg: '#10b98115', color: '#10b981', label: 'User Created'    },
+  user_updated:    { bg: '#6366f115', color: '#6366f1', label: 'User Updated'    },
+  user_activated:  { bg: '#10b98115', color: '#10b981', label: 'Activated'       },
+  user_deactivated:{ bg: '#f5920015', color: '#f59200', label: 'Deactivated'     },
+  user_deleted:    { bg: '#d7192015', color: '#d71920', label: 'User Deleted'    },
+  users_synced:    { bg: '#0ea5e915', color: '#0ea5e9', label: 'HR Sync'         },
+};
+
+function ActivityLogsPanel() {
+  const [logs,    setLogs]    = useState([]);
+  const [total,   setTotal]   = useState(0);
+  const [pages,   setPages]   = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [search,  setSearch]  = useState('');
+  const [action,  setAction]  = useState('');
+  const [page,    setPage]    = useState(1);
+
+  const load = (p) => {
+    setLoading(true);
+    api.activityLogs({ page: p, limit: 50, search: search || '', action: action || '' })
+      .then(d => { setLogs(d.logs || []); setTotal(d.total || 0); setPages(d.pages || 1); })
+      .catch(() => setLogs([]))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { setPage(1); load(1); }, [search, action]); // eslint-disable-line
+  useEffect(() => { load(page); }, [page]); // eslint-disable-line
+
+  return (
+    <>
+      <div className="flex flex-wrap gap-2 mb-3">
+        <div className="relative flex-1 min-w-48">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted)' }} />
+          <input className="input w-full pl-7 text-sm" placeholder="Search actor, target, details…"
+            value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
+        <select className="input text-sm" value={action} onChange={e => setAction(e.target.value)}>
+          <option value="">All Actions</option>
+          {Object.entries(ACTION_META).map(([key, m]) => (
+            <option key={key} value={key}>{m.label}</option>
+          ))}
+        </select>
+        <button onClick={() => load(page)} className="btn-ghost px-2 py-1 flex items-center gap-1 text-sm">
+          <RefreshCw size={13} />
+        </button>
+      </div>
+
+      <p className="text-xs mb-2" style={{ color: 'var(--muted)' }}>Total: {total} records</p>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-8 gap-2" style={{ color: 'var(--muted)' }}>
+          <Loader2 size={16} className="animate-spin" /> Loading…
+        </div>
+      ) : (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left" style={{ color: 'var(--muted)' }}>
+                  <th className="p-2">Time</th>
+                  <th className="p-2">Admin</th>
+                  <th className="p-2">Action</th>
+                  <th className="p-2">Target</th>
+                  <th className="p-2">Details</th>
+                  <th className="p-2">IP</th>
+                </tr>
+              </thead>
+              <tbody>
+                {logs.length === 0 && (
+                  <tr><td colSpan={6} className="p-6 text-center" style={{ color: 'var(--muted)' }}>No activity logs yet.</td></tr>
+                )}
+                {logs.map(l => {
+                  const am = ACTION_META[l.action] || { bg: '#6366f115', color: '#6366f1', label: l.action };
+                  return (
+                    <tr key={l.id} className="border-t hover:bg-black/5 transition" style={{ borderColor: 'var(--border)' }}>
+                      <td className="p-2 text-xs whitespace-nowrap" style={{ color: 'var(--muted)' }}>{fmtDate(l.logged_at)}</td>
+                      <td className="p-2">
+                        <div className="font-semibold text-xs">{l.actor_name || l.actor}</div>
+                        <div className="font-mono text-xs" style={{ color: 'var(--muted)' }}>{l.actor}</div>
+                      </td>
+                      <td className="p-2">
+                        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold"
+                          style={{ background: am.bg, color: am.color }}>
+                          {am.label}
+                        </span>
+                      </td>
+                      <td className="p-2 font-mono text-xs">{l.target || '—'}</td>
+                      <td className="p-2 text-xs max-w-xs" style={{ color: 'var(--muted)' }}>{l.details || '—'}</td>
+                      <td className="p-2 font-mono text-xs">{l.ip || '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <LogPager page={page} pages={pages} onPage={setPage} />
+        </>
+      )}
+    </>
   );
 }
 

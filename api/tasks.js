@@ -134,6 +134,7 @@ module.exports = async function handler(req, res) {
     );
 
     // Telegram alert to assignee
+    console.log(`[tasks] assignee telegram_chat_id: "${assignee.telegram_chat_id}", bot token set: ${!!process.env.TELEGRAM_BOT_TOKEN}`);
     if (assignee.telegram_chat_id) {
       const prioEmoji  = priority === 'high' ? '🔴' : priority === 'low' ? '🟢' : '🟡';
       const prioLabel  = priority === 'high' ? 'High' : priority === 'low' ? 'Low' : 'Medium';
@@ -146,7 +147,8 @@ module.exports = async function handler(req, res) {
         `\n👤 From: ${creatorName}` +
         descLine;
       sendMessage(assignee.telegram_chat_id, msg)
-        .catch(e => console.error('[tasks] Telegram:', e.message));
+        .then(() => console.log('[tasks] Telegram sent to assignee OK'))
+        .catch(e => console.error('[tasks] Telegram FAILED:', e.message));
     }
 
     return res.status(201).json({ ok: true, id: result.insertId });

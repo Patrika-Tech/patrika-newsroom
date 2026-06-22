@@ -189,6 +189,20 @@ export const api = {
     return res.json();
   },
 
+  // ── Login Logs (Admin only) ──────────────────────────────────────────────────
+  loginLogs: (params = {}) => {
+    const p = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v)));
+    const qs = p.toString();
+    return request(`/auth/login-logs${qs ? '?' + qs : ''}`);
+  },
+
+  // ── Activity Logs / Settings Logs (Admin only) ───────────────────────────────
+  activityLogs: (params = {}) => {
+    const p = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v)));
+    const qs = p.toString();
+    return request(`/auth/activity-logs${qs ? '?' + qs : ''}`);
+  },
+
   // ── Task Management ──────────────────────────────────────────────────────────
   listTasks: (status) => {
     const p = new URLSearchParams();

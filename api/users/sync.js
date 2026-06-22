@@ -26,6 +26,11 @@ const { query } = require('../_lib/mysql');
 const { ensureColumn }           = require('../_lib/schema');
 const { requireRole }            = require('../_lib/auth');
 const { setCors, handleOptions } = require('../_lib/cors');
+const { writeActivityLog }       = require('../_lib/activity-log');
+
+function getIP(req) {
+  return req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+}
 
 // Story_Type → users.role
 const ROLE_MAP = {
@@ -37,7 +42,7 @@ module.exports = async (req, res) => {
   setCors(res);
   if (handleOptions(req, res)) return;
 
-  const { authError } = requireRole(req, ['Admin']);
+  const { authError, user: caller } = requireRole(req, ['Admin']);
   if (authError) return res.status(authError.status).json({ error: authError.message });
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -138,6 +143,13 @@ module.exports = async (req, res) => {
       }
     }
 
+    writeActivityLog({
+      actor: caller.sub, actorName: caller.name || caller.sub,
+      action: 'users_synced',
+      target: '',
+      details: `HR sync: ${created} created, ${updated} updated (${employees.length} total)`,
+      ip: getIP(req),
+    });
     return res.json({ ok: true, total: employees.length, created, updated, details });
 
   } catch (err) {

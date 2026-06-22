@@ -71,7 +71,7 @@ async function extractText(buffer, mimetype, originalname) {
 // ── Gemini call ───────────────────────────────────────────────────────────────
 async function callGemini(systemPrompt, userContent) {
   const key = process.env.GEMINI_API_KEY;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
+  const url = `https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash-lite:generateContent?key=${key}`;
   const res = await fetch(url, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },

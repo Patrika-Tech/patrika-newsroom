@@ -56,6 +56,8 @@ function h(handlerPath) {
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 app.all('/api/auth/login',            h('./api/auth/login'));
+app.all('/api/auth/login-logs',       h('./api/auth/login-logs'));
+app.all('/api/auth/activity-logs',    h('./api/auth/activity-logs'));
 app.all('/api/auth/whoami',           h('./api/auth/whoami'));
 app.all('/api/auth/setup',            h('./api/auth/setup'));   // delete after first login
 

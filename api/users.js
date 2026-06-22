@@ -8,6 +8,11 @@ const { query } = require('./_lib/mysql');
 const { ensureColumn }           = require('./_lib/schema');
 const { requireRole }            = require('./_lib/auth');
 const { setCors, handleOptions } = require('./_lib/cors');
+const { writeActivityLog }       = require('./_lib/activity-log');
+
+function getIP(req) {
+  return req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+}
 
 const VALID_ROLES = ['Admin', 'State Head', 'Regional Editor', 'Legal'];
 
@@ -20,7 +25,7 @@ module.exports = async (req, res) => {
   setCors(res);
   if (handleOptions(req, res)) return;
 
-  const { authError } = requireRole(req, ['Admin']);
+  const { authError, user: caller } = requireRole(req, ['Admin']);
   if (authError) return res.status(authError.status).json({ error: authError.message });
 
   // ── GET — list users ──────────────────────────────────────────────────────
@@ -72,6 +77,13 @@ module.exports = async (req, res) => {
         ? 'SELECT id, username, name, role, state, branch, COALESCE(is_active,1) AS is_active, created_at FROM users WHERE id = ?'
         : 'SELECT id, username, name, role, state, branch, 1 AS is_active, created_at FROM users WHERE id = ?';
       const [created] = await query(selectSql, [insertId]);
+      writeActivityLog({
+        actor: caller.sub, actorName: caller.name || caller.sub,
+        action: 'user_created',
+        target: username,
+        details: `Created user "${name}" with role ${role}${state ? `, state ${state}` : ''}${branch ? `, branch ${branch}` : ''}`,
+        ip: getIP(req),
+      });
       return res.status(201).json(created);
     } catch (err) {
       if (err.code === 'ER_DUP_ENTRY')

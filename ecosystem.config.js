@@ -20,7 +20,7 @@ module.exports = {
       // Environment variables (override with .env file on the server)
       env: {
         NODE_ENV: 'production',
-        PORT: 3000,
+        PORT: 3001,
       },
 
       // Log files
