@@ -136,6 +136,9 @@ app.all('/api/field/visits/:id',        h('./api/field/visits'));   // PATCH che
 app.all('/api/field/visits',            h('./api/field/visits'));
 app.use('/uploads/field', express.static(path.join(__dirname, 'uploads', 'field')));
 
+// ── News Generator ────────────────────────────────────────────────────────────
+app.post('/api/news-generator',       require('./api/news-generator'));
+
 // ── Correspondent ─────────────────────────────────────────────────────────────
 app.all('/api/correspondent',         h('./api/correspondent'));
 

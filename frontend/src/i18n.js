@@ -9,7 +9,7 @@ export const dict = {
     nav: {
       home: 'Home Dashboard', editorial: 'Editorial', production: 'Production',
       pages: 'Page Monitoring', hr: 'HR', legal: 'Legal', archive: 'Archive',
-      ai: 'AI Insights', alerts: 'Alerts Center', reports: 'Reports', tasks: 'Task Management', correspondent: 'Correspondent', feedback: 'Feedback', settings: 'Settings'
+      ai: 'AI Insights', alerts: 'Alerts Center', reports: 'Reports', tasks: 'Task Management', correspondent: 'Correspondent', 'news-generator': 'News Generator', feedback: 'Feedback', settings: 'Settings'
     },
     kpi: {
       pages: 'Pages Published', delayed: 'Delayed Editions', productivity: 'Reporter Productivity',
@@ -30,7 +30,7 @@ export const dict = {
     nav: {
       home: 'मुख्य डैशबोर्ड', editorial: 'संपादकीय', production: 'प्रोडक्शन',
       pages: 'पेज मॉनिटरिंग', hr: 'एचआर', legal: 'कानूनी', archive: 'आर्काइव',
-      ai: 'एआई इनसाइट्स', alerts: 'अलर्ट सेंटर', reports: 'रिपोर्ट्स', tasks: 'टास्क मैनेजमेंट', correspondent: 'संवाददाता', feedback: 'फीडबैक', settings: 'सेटिंग्स'
+      ai: 'एआई इनसाइट्स', alerts: 'अलर्ट सेंटर', reports: 'रिपोर्ट्स', tasks: 'टास्क मैनेजमेंट', correspondent: 'संवाददाता', 'news-generator': 'न्यूज़ जनरेटर', feedback: 'फीडबैक', settings: 'सेटिंग्स'
     },
     kpi: {
       pages: 'प्रकाशित पृष्ठ', delayed: 'विलंबित संस्करण', productivity: 'रिपोर्टर उत्पादकता',

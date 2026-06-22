@@ -18,7 +18,8 @@ import Feedback from './pages/Feedback.jsx';
 import Tasks    from './pages/Tasks.jsx';
 import Field         from './pages/Field.jsx';
 import FieldPortal   from './pages/FieldPortal.jsx';
-import Correspondent from './pages/Correspondent.jsx';
+import Correspondent  from './pages/Correspondent.jsx';
+import NewsGenerator  from './pages/NewsGenerator.jsx';
 
 // ── Error Boundary — shows the crash message instead of blank screen ──────────
 class ErrorBoundary extends Component {
@@ -87,7 +88,8 @@ export default function App() {
         <Route path="/settings"  element={<Guard accessKey="settings">   <Settings />      </Guard>} />
         <Route path="/feedback"  element={<Guard accessKey="feedback">   <Feedback />      </Guard>} />
         <Route path="/tasks"          element={<Guard accessKey="tasks">         <Tasks />         </Guard>} />
-        <Route path="/correspondent"  element={<Guard accessKey="correspondent"><Correspondent /> </Guard>} />
+        <Route path="/correspondent"  element={<Guard accessKey="correspondent"><Correspondent />  </Guard>} />
+        <Route path="/news-generator" element={<Guard accessKey="news-generator"><NewsGenerator /> </Guard>} />
         <Route path="*"          element={<Navigate to="/" replace />} />
       </Routes>
     </ErrorBoundary>
