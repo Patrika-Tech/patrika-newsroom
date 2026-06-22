@@ -68,27 +68,25 @@ async function extractText(buffer, mimetype, originalname) {
   return buffer.toString('utf8').trim();
 }
 
-// ── OpenAI call ───────────────────────────────────────────────────────────────
-async function callOpenAI(systemPrompt, userContent) {
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+// ── Gemini call ───────────────────────────────────────────────────────────────
+async function callGemini(systemPrompt, userContent) {
+  const key = process.env.GEMINI_API_KEY;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
+  const res = await fetch(url, {
     method:  'POST',
-    headers: {
-      Authorization:  `Bearer ${process.env.OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model:       'gpt-4o-mini',
-      temperature: 0.4,
-      max_tokens:  1200,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user',   content: userContent  },
-      ],
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ role: 'user', parts: [{ text: userContent }] }],
+      generationConfig: { temperature: 0.4, maxOutputTokens: 1500 },
     }),
   });
-  if (!res.ok) throw new Error(`OpenAI error: ${res.status}`);
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Gemini error ${res.status}: ${err}`);
+  }
   const data = await res.json();
-  return data.choices?.[0]?.message?.content?.trim() || '';
+  return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
 }
 
 // ── Parse structured JSON from LLM response ───────────────────────────────────
@@ -107,8 +105,8 @@ module.exports = function handler(req, res) {
   const { authError, user } = requireRole(req, ['Admin', 'State Head', 'Regional Editor']);
   if (authError) return res.status(authError.status).json({ error: authError.message });
 
-  if (!process.env.OPENAI_API_KEY) {
-    return res.status(503).json({ error: 'OPENAI_API_KEY is not configured. Please add it to .env' });
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(503).json({ error: 'GEMINI_API_KEY is not configured. Please add it to .env' });
   }
 
   upload(req, res, async (err) => {
@@ -161,7 +159,7 @@ JSON format:
 `.trim();
 
     try {
-      const raw    = await callOpenAI(systemPrompt, `स्रोत सामग्री:\n\n${input}`);
+      const raw    = await callGemini(systemPrompt, `स्रोत सामग्री:\n\n${input}`);
       const parsed = parseJSON(raw);
 
       return res.json({
