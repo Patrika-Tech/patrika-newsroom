@@ -56,7 +56,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int    FILE_CHOOSER_CODE = 102;
     private static final String PREFS            = "FieldPortalPrefs";
     private static final String KEY_SERVER       = "server_url";
-    private static final String DEFAULT_URL      = "http://10.30.9.200:3000/reporter";
+    private static final String DEFAULT_URL      = "https://ers.patrika.com/reporter";
 
     // ── Android GPS bridge ────────────────────────────────────────────────────
     class AndroidGPS {
@@ -200,7 +200,7 @@ public class MainActivity extends AppCompatActivity {
                     "<body style='font-family:sans-serif;text-align:center;padding:40px;background:#f9fafb;margin:0'>" +
                     "<div style='font-size:56px;margin-bottom:16px'>📡</div>" +
                     "<h2 style='color:#e11d48;margin:0 0 12px'>सर्वर से कनेक्ट नहीं हो सका</h2>" +
-                    "<p style='color:#6b7280;margin:0 0 8px'>फोन और PC एक ही WiFi पर होने चाहिए</p>" +
+                    "<p style='color:#6b7280;margin:0 0 8px'>इंटरनेट कनेक्शन जांचें</p>" +
                     "<p style='color:#9ca3af;font-size:13px;margin:0 0 24px;word-break:break-all'>URL: " + serverUrl + "</p>" +
                     "<button onclick='location.reload()' style='display:block;width:100%;padding:14px;" +
                     "background:#059669;color:white;border:none;border-radius:12px;font-size:16px;" +
