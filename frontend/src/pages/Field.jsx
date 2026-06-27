@@ -54,18 +54,38 @@ function captureGPS() {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) return reject(new Error('GPS उपलब्ध नहीं'));
 
-    const ok  = pos => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude, accuracy: Math.round(pos.coords.accuracy) });
-    const err = e => {
-      if (e.code === 1) return reject(new Error('GPS अनुमति नहीं — Settings → Apps → फील्ड पोर्टल → Permissions → Location → Allow'));
-      reject(new Error('GPS उपलब्ध नहीं — Location/GPS चालू करें'));
+    let best    = null;
+    let watchId = null;
+    const GOOD_ENOUGH = 30;   // metres — accept immediately (satellite-quality fix)
+    const MAX_WAIT    = 30000; // wait up to 30s for a good fix
+
+    const done = () => {
+      if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+      if (best) resolve(best);
+      else reject(new Error('GPS उपलब्ध नहीं — Location/GPS चालू करें'));
     };
 
-    // Phase 1 — cached fix; Phase 2 — fresh fix with longer timeout for Android WebView
-    navigator.geolocation.getCurrentPosition(ok, () => {
-      navigator.geolocation.getCurrentPosition(ok, err,
-        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
-      );
-    }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 });
+    const timer = setTimeout(done, MAX_WAIT);
+
+    watchId = navigator.geolocation.watchPosition(
+      pos => {
+        const fix = {
+          lat:      pos.coords.latitude,
+          lon:      pos.coords.longitude,
+          accuracy: Math.round(pos.coords.accuracy),
+        };
+        if (!best || fix.accuracy < best.accuracy) best = fix;
+        if (fix.accuracy <= GOOD_ENOUGH) { clearTimeout(timer); done(); }
+      },
+      e => {
+        if (best) { clearTimeout(timer); done(); return; }
+        clearTimeout(timer);
+        if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+        if (e.code === 1) reject(new Error('GPS अनुमति नहीं — Settings → Apps → फील्ड पोर्टल → Permissions → Location → Allow'));
+        else reject(new Error('GPS उपलब्ध नहीं — Location/GPS चालू करें'));
+      },
+      { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
+    );
   });
 }
 

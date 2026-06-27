@@ -239,21 +239,61 @@ public class MainActivity extends AppCompatActivity {
     private void injectGPSBridge(WebView view) {
         String js =
             "(function(){" +
-            "  if(!window.AndroidGPS) return;" +
-            "  var geo = navigator.geolocation;" +
-            "  var orig = geo.getCurrentPosition.bind(geo);" +
-            "  geo.getCurrentPosition = function(success, error, opts) {" +
-            "    try {" +
-            "      var loc = window.AndroidGPS.getLocation();" +
-            "      if(loc && loc !== 'null') {" +
-            "        var p = loc.split(',');" +
-            "        success({coords:{latitude:+p[0],longitude:+p[1],accuracy:+p[2]," +
-            "          altitude:null,altitudeAccuracy:null,heading:null,speed:null}," +
-            "          timestamp:Date.now()});" +
-            "        return;" +
+            "  if(!window.AndroidGPS){return;}" +
+            "  var geo=navigator.geolocation;" +
+            "  var origCurr=geo.getCurrentPosition.bind(geo);" +
+            "  var origWatch=geo.watchPosition.bind(geo);" +
+            "  var origClear=geo.clearWatch.bind(geo);" +
+            "  var watches={}; var watchCtr=10000;" +
+
+            // getCurrentPosition: only use AndroidGPS if accuracy <= 50m (satellite fix)
+            "  geo.getCurrentPosition=function(success,error,opts){" +
+            "    try{" +
+            "      var loc=window.AndroidGPS.getLocation();" +
+            "      if(loc&&loc!=='null'){" +
+            "        var p=loc.split(','),acc=+p[2];" +
+            "        if(acc<=50){" +
+            "          success({coords:{latitude:+p[0],longitude:+p[1],accuracy:acc," +
+            "            altitude:null,altitudeAccuracy:null,heading:null,speed:null}," +
+            "            timestamp:Date.now()});" +
+            "          return;" +
+            "        }" +
             "      }" +
-            "    } catch(e) {}" +
-            "    orig(success, error, opts);" +
+            "    }catch(e){}" +
+            "    origCurr(success,error,opts);" +
+            "  };" +
+
+            // watchPosition: poll AndroidGPS every 1.5s AND run native watch in parallel
+            "  geo.watchPosition=function(success,error,opts){" +
+            "    var id=++watchCtr; var bestAcc=Infinity; var nativeId=null;" +
+            "    var poll=setInterval(function(){" +
+            "      try{" +
+            "        var loc=window.AndroidGPS.getLocation();" +
+            "        if(loc&&loc!=='null'){" +
+            "          var p=loc.split(','),lat=+p[0],lon=+p[1],acc=+p[2];" +
+            "          if(acc<bestAcc){bestAcc=acc;" +
+            "            success({coords:{latitude:lat,longitude:lon,accuracy:acc," +
+            "              altitude:null,altitudeAccuracy:null,heading:null,speed:null}," +
+            "              timestamp:Date.now()});" +
+            "          }" +
+            "        }" +
+            "      }catch(e){}" +
+            "    },1500);" +
+            // native watch as parallel source (picks up WiFi/cell fixes too)
+            "    try{nativeId=origWatch(function(pos){" +
+            "      if(pos.coords.accuracy<bestAcc){bestAcc=pos.coords.accuracy;success(pos);}" +
+            "    },function(e){if(typeof error==='function')error(e);},opts);}catch(e){}" +
+            "    watches[id]={poll:poll,native:nativeId}; return id;" +
+            "  };" +
+
+            // clearWatch: stop both poll interval and native watch
+            "  geo.clearWatch=function(id){" +
+            "    if(watches[id]){" +
+            "      clearInterval(watches[id].poll);" +
+            "      if(watches[id].native!==null)try{origClear(watches[id].native);}catch(e){}" +
+            "      delete watches[id]; return;" +
+            "    }" +
+            "    origClear(id);" +
             "  };" +
             "})();";
         view.evaluateJavascript(js, null);
