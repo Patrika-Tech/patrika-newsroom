@@ -928,9 +928,14 @@ export default function Production() {
 // Time display helper
 function fmtT(dt) {
   if (!dt) return '—';
+  // Backend sends DATE_FORMAT strings like '2026-07-02T01:57:00' (no Z/timezone).
+  // Browsers parse ISO-without-timezone as LOCAL time, so getHours() = correct IST.
+  const s = String(dt);
+  const m = s.match(/[T ](\d{2}):(\d{2})/);
+  if (m) return `${m[1]}:${m[2]}`;
   const d = new Date(dt);
   if (isNaN(d)) return '—';
-  return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return `${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`;
 }
 
 // Duration helper

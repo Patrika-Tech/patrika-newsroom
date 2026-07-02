@@ -68,11 +68,14 @@ function parseFilename(filename) {
 }
 
 // ── SQL for one GMG table ─────────────────────────────────────────────────────
+// DATE_FORMAT returns a plain string (not a Date object), so mysql2 timezone:'Z'
+// cannot mis-shift it — the browser receives the raw IST value and parses it
+// correctly as local time via new Date('YYYY-MM-DDTHH:MM:SS') (no Z suffix).
 const JOURNEY_SQL = `
   SELECT
     input_file,
-    MIN(date_time_pdf)  AS first_time,
-    MAX(date_time_pdf)  AS last_time,
+    DATE_FORMAT(MIN(date_time_pdf), '%Y-%m-%dT%H:%i:%s') AS first_time,
+    DATE_FORMAT(MAX(date_time_pdf), '%Y-%m-%dT%H:%i:%s') AS last_time,
     COUNT(*)            AS upload_count
   FROM \`{TABLE}\`
   WHERE input_file LIKE ?
