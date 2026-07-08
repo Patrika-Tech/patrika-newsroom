@@ -50,6 +50,10 @@ correspondentPaymentAlert.register();
 const homeOfficeVisitAlert = require('./api/cron/home-office-visit-alert');
 homeOfficeVisitAlert.register();
 
+// ── Cron: 8 AM IST Mon–Sat — top-10 delay edition report to AFZPJ6299J ────────
+const topDelayReport = require('./api/cron/top-delay-report');
+topDelayReport.register();
+
 // ── Body parsing ──────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -65,6 +69,13 @@ function h(handlerPath) {
     return handler(req, res);
   };
 }
+
+// ── Digital Team ─────────────────────────────────────────────────────────────
+app.all('/api/digital/login',         h('./api/digital/login'));
+app.all('/api/digital/users',         require('./api/digital/users'));   // multer — no h()
+app.all('/api/digital/dashboard',     h('./api/digital/dashboard'));
+app.all('/api/digital/targets',       require('./api/digital/targets')); // multer — no h()
+app.all('/api/digital/breaking-news', h('./api/digital/breaking-news'));
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 app.all('/api/auth/login',            h('./api/auth/login'));
@@ -84,6 +95,7 @@ app.all('/api/dashboard',             h('./api/dashboard'));
 // ── Editorial / Production / Pages / Reports ──────────────────────────────────
 app.all('/api/editorial/feeds',       h('./api/editorial/feeds'));   // must be before /api/editorial
 app.all('/api/editorial',             h('./api/editorial'));
+app.all('/api/production/top-delay-alert',      h('./api/cron/top-delay-report-api'));
 app.all('/api/production/delay-report',        h('./api/production/delay-report'));
 app.all('/api/production/weekly-appreciation', h('./api/production/weekly-appreciation'));
 app.all('/api/production/delay-reasons', h('./api/production/delay-reasons'));

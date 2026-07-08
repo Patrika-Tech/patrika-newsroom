@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import * as XLSX from 'xlsx';
 import {
   FileSpreadsheet, RefreshCw, ChevronDown, ChevronUp,
-  FileText, Clock, AlertCircle, MapPin, Award, Users,
+  FileText, Clock, AlertCircle, MapPin, Award, Users, Newspaper,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.jsx';
 import { api } from '../api/client.js';
@@ -57,6 +57,15 @@ const REPORTS = [
     label: 'Employee Directory',
     desc: 'Active employees with profile, state, branch and contact details.',
     filterType: 'none',
+  },
+  {
+    type: 'press_release',
+    icon: Newspaper,
+    color: '#0891b2',
+    label: 'Press Release Report',
+    desc: 'Active employees working on press releases — entry count, editions and last activity date.',
+    filterType: 'dateRange',
+    defaultTo: 'today',
   },
 ];
 
@@ -149,23 +158,24 @@ function PreviewTable({ columns, rows, label, total }) {
 }
 
 // ── Filter panel ──────────────────────────────────────────────────────────────
-function FilterPanel({ filterType, value, onChange }) {
+function FilterPanel({ filterType, value, onChange, maxToday = false }) {
   if (filterType === 'none') return null;
 
   const inputStyle = {
     border: '1px solid var(--border)', borderRadius: 8, padding: '6px 10px',
     background: 'var(--surface)', color: 'var(--text)', fontSize: 13,
   };
+  const maxDate = maxToday ? today() : yday();
 
   if (filterType === 'dateRange') {
     return (
       <div className="flex flex-wrap gap-3 items-center mt-3">
         <label className="text-xs font-semibold" style={{ color: 'var(--muted)' }}>From</label>
         <input type="date" style={inputStyle} value={value.from}
-          onChange={e => onChange({ ...value, from: e.target.value })} max={yday()} />
+          onChange={e => onChange({ ...value, from: e.target.value })} max={maxDate} />
         <label className="text-xs font-semibold" style={{ color: 'var(--muted)' }}>To</label>
         <input type="date" style={inputStyle} value={value.to}
-          onChange={e => onChange({ ...value, to: e.target.value })} max={yday()} />
+          onChange={e => onChange({ ...value, to: e.target.value })} max={maxDate} />
       </div>
     );
   }
@@ -193,8 +203,9 @@ function FilterPanel({ filterType, value, onChange }) {
 }
 
 // ── Default filter values ─────────────────────────────────────────────────────
-function defaultFilters(filterType) {
-  if (filterType === 'dateRange') return { from: daysAgo(7), to: yday() };
+function defaultFilters(report) {
+  const { filterType, defaultTo } = report;
+  if (filterType === 'dateRange') return { from: daysAgo(7), to: defaultTo === 'today' ? today() : yday() };
   if (filterType === 'date')      return { date: yday() };
   if (filterType === 'month')     return { month: thisMonth() };
   return {};
@@ -202,9 +213,9 @@ function defaultFilters(filterType) {
 
 // ── Single Report Card ────────────────────────────────────────────────────────
 function ReportCard({ report, globalState, globalBranch }) {
-  const { type, icon: Icon, color, label, desc, filterType } = report;
+  const { type, icon: Icon, color, label, desc, filterType, defaultTo } = report;
   const [open,    setOpen]    = useState(false);
-  const [filters, setFilters] = useState(() => defaultFilters(filterType));
+  const [filters, setFilters] = useState(() => defaultFilters(report));
   const [loading, setLoading] = useState(false);
   const [data,    setData]    = useState(null);
   const [error,   setError]   = useState('');
@@ -261,7 +272,7 @@ function ReportCard({ report, globalState, globalBranch }) {
       {open && (
         <div style={{ borderTop: '1px solid var(--border)', padding: '16px' }}>
           <div className="flex flex-wrap items-end gap-3">
-            <FilterPanel filterType={filterType} value={filters} onChange={setFilters} />
+            <FilterPanel filterType={filterType} value={filters} onChange={setFilters} maxToday={defaultTo === 'today'} />
             <button
               className="btn-ghost flex items-center gap-2 text-sm px-4 py-2 mt-3"
               onClick={generate}

@@ -20,6 +20,8 @@ const ACCESS = {
   'State Head':      ['home', 'editorial', 'production', 'pages', 'field', 'hr', 'alerts', 'reports', 'tasks', 'correspondent', 'settings', 'feedback'],
   'Regional Editor': ['home', 'editorial', 'production', 'pages', 'field', 'hr', 'alerts', 'reports', 'tasks', 'correspondent', 'settings', 'feedback'],
   'Legal':           ['legal', 'settings'],
+  // Digital team: access only their own tracker tab
+  'Digital User':    ['digital_tracker'],
 };
 
 export function AppProvider({ children }) {
@@ -129,8 +131,14 @@ export function AppProvider({ children }) {
     _setBranch(val);
   };
 
+  const isDigitalUser  = () => user?.source === 'digital';
+  const isDigitalAdmin = () => isDigitalUser() && user?.digital_role === 'digital_admin';
+  const isTeamLead     = () => isDigitalUser() && user?.digital_role === 'team_lead';
+
   const canAccess    = (key) => {
     if (!user) return false;
+    // Admin newsroom users can also see digital_tracker
+    if (user.role === 'Admin') return true;
     const a = ACCESS[user.role] || [];
     return a === 'all' || a.includes(key);
   };
@@ -154,6 +162,7 @@ export function AppProvider({ children }) {
       canAccess, isAdmin,
       isStateRestricted, isBranchRestricted,
       canViewHr, canEditHr, canEditGrading, canEditTraining, canEditLegal,
+      isDigitalUser, isDigitalAdmin, isTeamLead,
     }}>
       {children}
     </AppCtx.Provider>

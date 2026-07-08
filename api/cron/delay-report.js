@@ -39,18 +39,23 @@ const RELEASES_SQL = (tbl, region) => `
   GROUP BY pub_date, code
 `;
 
-// Walk back through all distinct upload times (DESC); return the most recent
-// that gives delay < 150 min (2h30m), or the earliest available as a last resort.
-function pickReleaseTime(allTimesStr, schedMs) {
+// Hard cutoff: no upload after 2:30 AM IST is used for release time.
+function isBefore230(t) {
+  const m = String(t || '').match(/[T ](\d{2}):(\d{2})/);
+  if (!m) return false;
+  const h = +m[1], min = +m[2];
+  return h < 2 || (h === 2 && min <= 30);
+}
+
+function pickLatestBefore230(allTimesStr) {
   if (!allTimesStr) return null;
   const parts = String(allTimesStr).split('|').map(s => s.trim()).filter(Boolean);
-  for (const t of parts) {
-    const ms = new Date(t).getTime();
-    if (isNaN(ms)) continue;
-    if (Math.round((ms - schedMs) / 60000) < 150) return { ms, time: t };
-  }
-  const last = parts[parts.length - 1];
-  return last ? { ms: new Date(last).getTime(), time: last } : null;
+  const valid = parts.find(t => !isNaN(new Date(t).getTime()) && isBefore230(t));
+  if (valid) return { ms: new Date(valid).getTime(), time: valid };
+  const dateStr = (parts[0] || '').slice(0, 10);
+  if (!dateStr) return null;
+  const capped = `${dateStr} 02:30:00`;
+  return { ms: new Date(capped).getTime(), time: capped };
 }
 
 function fmtDelay(minutes) {
@@ -114,16 +119,11 @@ async function fetchDelayedByBranch(date) {
     schedDate.setHours(sh, sm, 0, 0);
     const schedMs = schedDate.getTime();
 
-    // Hard cap: no edition more than 2.5 hours late.
-    const maxMs   = new Date(r.release_time).getTime();
-    let releaseMs = maxMs;
-    let release_time = r.release_time;
-    if (Math.round((maxMs - schedMs) / 60000) >= 150) {
-      const best = pickReleaseTime(r.all_release_times, schedMs);
-      if (best && best.ms !== maxMs) { releaseMs = best.ms; release_time = best.time; }
-    }
-
-    // Hard cap: treat any edition as no more than 2h29m late (149 min).
+    // Use the most recent upload at or before 2:30 AM IST.
+    const allTimes   = r.all_release_times || String(r.release_time || '').replace('T', ' ').slice(0, 19);
+    const best       = pickLatestBefore230(allTimes);
+    const releaseMs    = best ? best.ms : new Date(r.release_time).getTime();
+    const release_time = best ? best.time : r.release_time;
     const delay_minutes = Math.min(Math.round((releaseMs - schedMs) / 60000), 149);
 
     if (delay_minutes <= DELAY_WARN_MINUTES) return; // on time — skip

@@ -18,7 +18,8 @@ import Feedback from './pages/Feedback.jsx';
 import Tasks    from './pages/Tasks.jsx';
 import Field         from './pages/Field.jsx';
 import FieldPortal   from './pages/FieldPortal.jsx';
-import Correspondent  from './pages/Correspondent.jsx';
+import Correspondent    from './pages/Correspondent.jsx';
+import DigitalTracker  from './pages/DigitalTracker.jsx';
 
 // ── Error Boundary — shows the crash message instead of blank screen ──────────
 class ErrorBoundary extends Component {
@@ -47,7 +48,7 @@ class ErrorBoundary extends Component {
 }
 
 // First accessible route per role — used as the post-login landing page
-const ROLE_HOME = { Legal: '/legal' };
+const ROLE_HOME = { Legal: '/legal', 'Digital User': '/digital-tracker' };
 function roleHome(user) { return ROLE_HOME[user?.role] || '/'; }
 
 // ── Route guard ───────────────────────────────────────────────────────────────
@@ -71,7 +72,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <Routes>
-        <Route path="/login"    element={user ? <Navigate to="/" replace /> : <Login />} />
+        <Route path="/login"    element={user ? <Navigate to={roleHome(user)} replace /> : <Login />} />
         <Route path="/reporter" element={<FieldPortal />} />
         <Route path="/"          element={<Guard accessKey="home">       <Dashboard />     </Guard>} />
         <Route path="/editorial" element={<Guard accessKey="editorial">  <Editorial />     </Guard>} />
@@ -87,7 +88,8 @@ export default function App() {
         <Route path="/settings"  element={<Guard accessKey="settings">   <Settings />      </Guard>} />
         <Route path="/feedback"  element={<Guard accessKey="feedback">   <Feedback />      </Guard>} />
         <Route path="/tasks"          element={<Guard accessKey="tasks">         <Tasks />         </Guard>} />
-        <Route path="/correspondent"  element={<Guard accessKey="correspondent"><Correspondent />  </Guard>} />
+        <Route path="/correspondent"    element={<Guard accessKey="correspondent"><Correspondent />   </Guard>} />
+        <Route path="/digital-tracker" element={<Guard accessKey="digital_tracker"><DigitalTracker /></Guard>} />
         <Route path="*"          element={<Navigate to="/" replace />} />
       </Routes>
     </ErrorBoundary>

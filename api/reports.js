@@ -30,7 +30,8 @@ const REPORT_TYPES = [
   { type:'qc',        label:'QC Mistakes',           desc:'Quality control issues by date range, edition and severity' },
   { type:'visits',    label:'Field Visits',          desc:'Reporter field visit logs with time, location and transport' },
   { type:'grading',   label:'PLI & Grading',         desc:'Employee grading scores (Work / Behaviour / Discipline / Interest) by month' },
-  { type:'employees', label:'Employee Directory',    desc:'Active employees with profile, state, branch and contact details' },
+  { type:'employees',     label:'Employee Directory',    desc:'Active employees with profile, state, branch and contact details' },
+  { type:'press_release', label:'Press Release Report', desc:'Active employees working on press releases — count, editions and last activity date' },
 ];
 
 module.exports = async function handler(req, res) {
@@ -62,7 +63,8 @@ module.exports = async function handler(req, res) {
       case 'qc':        return await reportQC       (req, res, filterState);
       case 'visits':    return await reportVisits   (req, res, filterState, filterBranch);
       case 'grading':   return await reportGrading  (req, res, filterState, filterBranch);
-      case 'employees': return await reportEmployees(req, res, filterState, filterBranch);
+      case 'employees':     return await reportEmployees   (req, res, filterState, filterBranch);
+      case 'press_release': return await reportPressRelease(req, res, filterState, filterBranch);
       default: return res.status(400).json({ error: `Unknown report type: ${type}` });
     }
   } catch (err) {
@@ -297,6 +299,54 @@ async function reportGrading(req, res, filterState, filterBranch) {
       r.pan||'', r.emp_code||'', r.emp_name||'', r.state||'', r.branch||'', r.month||'',
       r.work_grade ?? '', r.behaviour_grade ?? '', r.discipline_grade ?? '', r.interest_grade ?? '',
       r.overall_grade ?? '', r.pli_percent ?? '', r.remarks||'',
+    ]),
+  });
+}
+
+/* ── 7. Press Release Report ─────────────────────────────────────────────── */
+async function reportPressRelease(req, res, filterState, filterBranch) {
+  const from = req.query.from || daysAgo(30);
+  const to   = req.query.to   || new Date().toISOString().slice(0, 10);
+
+  const where = [
+    "DATE(p.inserted_on) BETWEEN ? AND ?",
+    "(u.is_emp_working = 1 OR u.Status IN ('Working','Active'))",
+  ];
+  const params = [from, to];
+  if (filterState)  { where.push('u.State = ?');  params.push(filterState); }
+  if (filterBranch) { where.push('u.Branch = ?'); params.push(filterBranch); }
+
+  const rows = await query(`
+    SELECT u.pan_no, u.EMPNAME AS name,
+           u.State AS state, u.Branch AS branch,
+           TRIM(u.Story_Type) AS profile,
+           u.emp_designation AS designation,
+           COUNT(p.id)            AS total_entries,
+           SUM(p.value_edition)   AS total_editions,
+           MIN(DATE(p.inserted_on)) AS first_date,
+           MAX(DATE(p.inserted_on)) AS last_date
+    FROM press_release_log p
+    JOIN \`user\` u ON p.user_id = u.id
+    WHERE ${where.join(' AND ')}
+    GROUP BY u.id, u.pan_no, u.EMPNAME, u.State, u.Branch, u.Story_Type, u.emp_designation
+    ORDER BY total_editions DESC, total_entries DESC
+    LIMIT 2000
+  `, params);
+
+  return res.json({
+    type: 'press_release', from, to, total: rows.length,
+    columns: ['Pan No','Name','State','Branch','Profile','Designation','Total Entries','Total Editions','First Date','Last Date'],
+    rows: rows.map(r => [
+      r.pan_no   || '',
+      r.name     || '',
+      r.state    || '',
+      r.branch   || '',
+      r.profile  || '',
+      r.designation || '',
+      Number(r.total_entries  || 0),
+      Number(r.total_editions || 0),
+      r.first_date ? String(r.first_date).slice(0, 10) : '',
+      r.last_date  ? String(r.last_date).slice(0, 10)  : '',
     ]),
   });
 }

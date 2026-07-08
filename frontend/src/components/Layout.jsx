@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, PenLine, Factory, Newspaper, Users, Scale, Archive,
-  Sparkles, Bell, BarChart3, Settings, MessageSquare, ClipboardList, Menu, X, Moon, Sun, Globe, LogOut, ChevronDown, Lock, Radio, Mic2
+  Sparkles, Bell, BarChart3, Settings, MessageSquare, ClipboardList, Menu, X, Moon, Sun, Globe, LogOut, ChevronDown, Lock, Radio, Mic2, Zap
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.jsx';
 import { Logo } from './UI.jsx';
@@ -20,9 +20,10 @@ const NAV = [
   { key: 'alerts',     to: '/alerts',     icon: Bell },
   { key: 'reports',    to: '/reports',    icon: BarChart3 },
   { key: 'tasks',          to: '/tasks',          icon: ClipboardList },
-  { key: 'correspondent',  to: '/correspondent',  icon: Mic2  },
-  { key: 'feedback',       to: '/feedback',       icon: MessageSquare },
-  { key: 'settings',   to: '/settings',   icon: Settings },
+  { key: 'correspondent',    to: '/correspondent',    icon: Mic2  },
+  { key: 'feedback',         to: '/feedback',         icon: MessageSquare },
+  { key: 'digital_tracker',  to: '/digital-tracker',  icon: Zap },
+  { key: 'settings',         to: '/settings',         icon: Settings },
 ];
 
 export default function Layout({ children }) {

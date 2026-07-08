@@ -521,9 +521,11 @@ export default function Production() {
   const [data,       setData]       = useState(null);
   const [loading,    setLoading]    = useState(true);
   const [search,     setSearch]     = useState('');
-  const [sending,    setSending]    = useState(false);
-  const [sendResult, setSendResult] = useState(null);
-  const [showConfig, setShowConfig] = useState(false);
+  const [sending,       setSending]       = useState(false);
+  const [sendResult,    setSendResult]    = useState(null);
+  const [sendingTop,    setSendingTop]    = useState(false);
+  const [sendTopResult, setSendTopResult] = useState(null);
+  const [showConfig,    setShowConfig]    = useState(false);
   const [reasons,    setReasons]    = useState([]);
   const [reasonsLoading, setReasonsLoading] = useState(false);
 
@@ -554,6 +556,22 @@ export default function Production() {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     }).catch(() => {});
     setReasons(prev => prev.filter(r => r.id !== id));
+  };
+
+  const sendTopDelayAlert = async () => {
+    setSendingTop(true); setSendTopResult(null);
+    try {
+      const res = await fetch('/api/production/top-delay-alert', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('pk_token')}` },
+        body:    JSON.stringify({ date }),
+      });
+      const d = await res.json();
+      setSendTopResult(d);
+    } catch (e) {
+      setSendTopResult({ error: e.message });
+    }
+    setSendingTop(false);
   };
 
   const sendDelayReport = async () => {
@@ -700,6 +718,19 @@ export default function Production() {
 
         {/* Telegram send controls */}
         <div className="flex items-center gap-1 ml-auto">
+          {isAdmin && (
+            <button
+              onClick={sendTopDelayAlert}
+              disabled={sendingTop || !editions.length}
+              className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg font-medium transition"
+              style={{ background: '#d71920', color: '#fff', opacity: sendingTop || !editions.length ? 0.6 : 1 }}
+              title="Send Top 10 delayed editions report via Telegram"
+            >
+              {sendingTop
+                ? <><Loader2 size={14} className="animate-spin" /> Sending…</>
+                : <><Send size={14} /> Top 10 Alert</>}
+            </button>
+          )}
           <button
             onClick={sendDelayReport}
             disabled={sending || !editions.length}
@@ -771,6 +802,29 @@ export default function Production() {
             })()}
           </div>
           <button onClick={() => setSendResult(null)} className="flex-shrink-0 mt-0.5">
+            <X size={14} style={{ color: 'var(--muted)' }} />
+          </button>
+        </div>
+      )}
+
+      {/* Top-10 alert result banner */}
+      {sendTopResult && (
+        <div className="mb-4 rounded-xl p-3 text-sm flex items-start gap-3"
+          style={{
+            background: sendTopResult.error ? '#d7192015' : (sendTopResult.result?.sent > 0 ? '#10b98115' : '#C9A22715'),
+            border: `1px solid ${sendTopResult.error ? '#d7192030' : (sendTopResult.result?.sent > 0 ? '#10b98130' : '#C9A22730')}`,
+          }}>
+          <div className="flex-1">
+            {sendTopResult.error && <p style={{ color: '#d71920' }}>❌ Error: {sendTopResult.error}</p>}
+            {sendTopResult.result?.skipped && <p>⚠️ {sendTopResult.result.reason === 'no delays' ? 'No delayed editions found — nothing sent.' : 'Recipient Telegram ID not set.'}</p>}
+            {sendTopResult.result?.sent > 0 && (
+              <p style={{ color: '#10b981' }}>
+                ✅ Top {sendTopResult.result.top?.length || 10} of {sendTopResult.result.total} delayed editions sent via Telegram.
+              </p>
+            )}
+            {sendTopResult.result?.failed > 0 && <p style={{ color: '#d71920' }}>❌ Telegram send failed — check bot token.</p>}
+          </div>
+          <button onClick={() => setSendTopResult(null)} className="flex-shrink-0 mt-0.5">
             <X size={14} style={{ color: 'var(--muted)' }} />
           </button>
         </div>

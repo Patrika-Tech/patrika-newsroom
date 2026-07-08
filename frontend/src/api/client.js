@@ -108,6 +108,72 @@ export const api = {
     const p = new URLSearchParams({ type, ...params });
     return withFallback(`/reports?${p}`, { type, columns: [], rows: [], total: 0 });
   },
+  // ── Digital Tracker ───────────────────────────────────────────────────────────
+  digitalLogin: async (email, password) => {
+    const data = await request('/digital/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    if (data.token) localStorage.setItem('pk_token', data.token);
+    return data.user;
+  },
+
+  digitalDashboard: (month) => {
+    const p = new URLSearchParams();
+    if (month) p.set('month', month);
+    return request(`/digital/dashboard${p.toString() ? '?' + p.toString() : ''}`);
+  },
+
+  digitalUsers:       ()         => request('/digital/users'),
+  createDigitalUser:  (data)     => request('/digital/users', { method: 'POST', body: JSON.stringify(data) }),
+  updateDigitalUser:  (id, data) => request(`/digital/users?id=${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteDigitalUser:  (id)       => request(`/digital/users?id=${id}`, { method: 'DELETE' }),
+
+  uploadDigitalUsers: async (file) => {
+    const token = localStorage.getItem('pk_token');
+    const fd = new FormData(); fd.append('file', file);
+    const res = await fetch(`${API_BASE}/digital/users`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    });
+    if (!res.ok) { let m = `HTTP ${res.status}`; try { const j = await res.json(); m = j.error || m; } catch {} throw new Error(m); }
+    return res.json();
+  },
+
+  digitalTargets: (month) => request(`/digital/targets${month ? '?month=' + month : ''}`),
+
+  breakingNews: (params = {}) => {
+    const p = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v)));
+    return request(`/digital/breaking-news${p.toString() ? '?' + p.toString() : ''}`);
+  },
+  fetchPatrikaArticles: (category = 'breaking-news') =>
+    request(`/digital/breaking-news?action=fetch-patrika&category=${category}`),
+  fetchPatrikaByDate: (date) =>
+    request(`/digital/breaking-news?action=fetch-by-date&date=${encodeURIComponent(date)}`),
+  articleMeta: (url) =>
+    request(`/digital/breaking-news?action=article-meta&url=${encodeURIComponent(url)}`),
+  batchAuthors: (urls) =>
+    request('/digital/breaking-news?action=batch-authors', {
+      method: 'POST',
+      body: JSON.stringify({ urls }),
+    }),
+  addBreakingNews:    (data)     => request('/digital/breaking-news', { method: 'POST', body: JSON.stringify(data) }),
+  updateBreakingNews: (id, data) => request(`/digital/breaking-news?id=${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteBreakingNews: (id)       => request(`/digital/breaking-news?id=${id}`, { method: 'DELETE' }),
+
+  uploadDigitalTargets: async (file) => {
+    const token = localStorage.getItem('pk_token');
+    const fd = new FormData(); fd.append('file', file);
+    const res = await fetch(`${API_BASE}/digital/targets`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    });
+    if (!res.ok) { let m = `HTTP ${res.status}`; try { const j = await res.json(); m = j.error || m; } catch {} throw new Error(m); }
+    return res.json();
+  },
+
   aiInsights: (state, branch, refresh = false, part = 'fast') => {
     const p = new URLSearchParams();
     if (state  && state  !== 'All') p.set('state',  state);

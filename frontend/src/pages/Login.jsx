@@ -3,23 +3,30 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext.jsx';
 import { api } from '../api/client.js';
 import { Logo } from '../components/UI.jsx';
-import { Globe, Moon, Sun, ShieldCheck } from 'lucide-react';
+import { Globe, Moon, Sun, ShieldCheck, Zap } from 'lucide-react';
 
 export default function Login() {
   const { login, t, lang, setLang, theme, setTheme } = useApp();
-  const [username, setU] = useState('');
-  const [password, setP] = useState('');
-  const [busy, setBusy]  = useState(false);
-  const [err,  setErr]   = useState('');
+  const [mode,     setMode]  = useState('newsroom');  // 'newsroom' | 'digital'
+  const [username, setU]     = useState('');
+  const [password, setP]     = useState('');
+  const [busy, setBusy]      = useState(false);
+  const [err,  setErr]       = useState('');
   const nav = useNavigate();
 
   const submit = async (e) => {
     e.preventDefault();
     setErr(''); setBusy(true);
     try {
-      const user = await api.login(username, password);
-      login(user);
-      nav(user.role === 'Legal' ? '/legal' : '/');
+      if (mode === 'digital') {
+        const user = await api.digitalLogin(username, password);
+        login(user);
+        nav('/digital-tracker');
+      } else {
+        const user = await api.login(username, password);
+        login(user);
+        nav(user.role === 'Legal' ? '/legal' : '/');
+      }
     } catch (e) { setErr(e.message || 'Login failed'); }
     finally { setBusy(false); }
   };
@@ -59,18 +66,37 @@ export default function Login() {
             </div>
           </div>
 
+          {/* Mode tabs */}
+          <div className="mb-5 flex rounded-lg overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
+            <button type="button"
+              className={`flex-1 py-2 text-sm font-medium transition ${mode === 'newsroom' ? 'text-white' : ''}`}
+              style={mode === 'newsroom' ? { background: 'var(--brand)' } : { background: 'var(--bg)', color: 'var(--muted)' }}
+              onClick={() => { setMode('newsroom'); setErr(''); setU(''); setP(''); }}>
+              Newsroom
+            </button>
+            <button type="button"
+              className={`flex-1 py-2 text-sm font-medium flex items-center justify-center gap-1.5 transition ${mode === 'digital' ? 'text-white' : ''}`}
+              style={mode === 'digital' ? { background: '#2563eb' } : { background: 'var(--bg)', color: 'var(--muted)' }}
+              onClick={() => { setMode('digital'); setErr(''); setU(''); setP(''); }}>
+              <Zap size={14} /> Digital Team
+            </button>
+          </div>
+
           <h2 className="text-xl font-bold">{t('login')}</h2>
           <p className="mb-5 text-sm" style={{ color: 'var(--muted)' }}>
-            Enter your credentials — role and access are assigned by Admin
+            {mode === 'digital'
+              ? 'Sign in with your digital team email'
+              : 'Enter your credentials — role and access are assigned by Admin'}
           </p>
 
           <form onSubmit={submit} className="space-y-4">
             <div>
-              <label className="label">{t('username')}</label>
+              <label className="label">{mode === 'digital' ? 'Email' : t('username')}</label>
               <input
                 className="input" autoComplete="username"
+                type={mode === 'digital' ? 'email' : 'text'}
                 value={username} onChange={(e) => setU(e.target.value)}
-                placeholder="e.g. r.sharma" required
+                placeholder={mode === 'digital' ? 'your.email@patrika.com' : 'e.g. r.sharma'} required
               />
             </div>
             <div>

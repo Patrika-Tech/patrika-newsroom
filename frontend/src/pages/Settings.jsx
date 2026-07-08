@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Plus, Edit2, Trash2, X, Save, Loader2, Users, Lock, RefreshCw, UserCheck, UserX, ShieldCheck, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { Plus, Edit2, Trash2, X, Save, Loader2, Users, Lock, RefreshCw, UserCheck, UserX, ShieldCheck, Search, ChevronLeft, ChevronRight, Zap, Upload, AlertCircle, CheckCircle } from 'lucide-react';
 import { useApp, ROLES } from '../context/AppContext.jsx';
 import { api } from '../api/client.js';
 import { PageHeader, SectionCard, Badge } from '../components/UI.jsx';
@@ -61,6 +61,9 @@ export default function Settings() {
 
         {/* ── User Management — Admin only ─────────────────────────────── */}
         {isAdmin() && <UserManagement />}
+
+        {/* ── Digital Users — Admin only ───────────────────────────────── */}
+        {isAdmin() && <DigitalUserSection />}
 
         {/* ── Logs (Login + Activity) — Admin only ─────────────────────── */}
         {isAdmin() && <AdminLogs />}
@@ -744,5 +747,67 @@ function UserModal({ user: editUser, locations, onClose, onSave }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Digital Users Section (Admin only — quick upload shortcut from Settings)
+// ─────────────────────────────────────────────────────────────────────────────
+function DigitalUserSection() {
+  const ref1 = useRef(), ref2 = useRef();
+  const [r1, setR1] = useState(null), [e1, setE1] = useState(''), [b1, setB1] = useState(false);
+  const [r2, setR2] = useState(null), [e2, setE2] = useState(''), [b2, setB2] = useState(false);
+
+  const doUpload = async (file, fn, setBusy, setResult, setErr) => {
+    setBusy(true); setResult(null); setErr('');
+    try { const r = await fn(file); setResult(r); }
+    catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <SectionCard title="Digital Team Management">
+      <p className="text-sm mb-4" style={{ color: 'var(--muted)' }}>
+        Upload Excel files to manage digital team users and their monthly UV/PV targets.
+        Full management is available in the Digital Tracker tab.
+      </p>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>
+          <div className="flex items-center gap-2 mb-2">
+            <Zap size={16} style={{ color: '#2563eb' }} />
+            <span className="font-semibold text-sm">Digital Users</span>
+          </div>
+          <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
+            Columns: Name, Email, Team, Team Lead, Role (digital_admin/team_lead/individual), CMS ID, Password
+          </p>
+          <input ref={ref1} type="file" accept=".xlsx,.xls,.csv" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) doUpload(f, api.uploadDigitalUsers, setB1, setR1, setE1); if (ref1.current) ref1.current.value = ''; }} />
+          <button className="btn-ghost text-sm flex items-center gap-1.5" style={{ color: '#2563eb' }}
+            onClick={() => ref1.current?.click()} disabled={b1}>
+            <Upload size={14} /> {b1 ? 'Uploading…' : 'Upload Users Excel'}
+          </button>
+          {e1 && <div className="mt-1.5 text-xs flex gap-1" style={{ color: '#dc2626' }}><AlertCircle size={12} />{e1}</div>}
+          {r1 && <div className="mt-1.5 text-xs flex gap-1" style={{ color: '#16a34a' }}><CheckCircle size={12} />Created: {r1.created} · Updated: {r1.updated} · Skipped: {r1.skipped}</div>}
+        </div>
+
+        <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>
+          <div className="flex items-center gap-2 mb-2">
+            <Users size={16} style={{ color: '#7c3aed' }} />
+            <span className="font-semibold text-sm">Monthly Targets</span>
+          </div>
+          <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
+            Columns: Email, Month (YYYY-MM), UV Target, PV Target, Story Target, Avg Time
+          </p>
+          <input ref={ref2} type="file" accept=".xlsx,.xls,.csv" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) doUpload(f, api.uploadDigitalTargets, setB2, setR2, setE2); if (ref2.current) ref2.current.value = ''; }} />
+          <button className="btn-ghost text-sm flex items-center gap-1.5" style={{ color: '#7c3aed' }}
+            onClick={() => ref2.current?.click()} disabled={b2}>
+            <Upload size={14} /> {b2 ? 'Uploading…' : 'Upload Targets Excel'}
+          </button>
+          {e2 && <div className="mt-1.5 text-xs flex gap-1" style={{ color: '#dc2626' }}><AlertCircle size={12} />{e2}</div>}
+          {r2 && <div className="mt-1.5 text-xs flex gap-1" style={{ color: '#16a34a' }}><CheckCircle size={12} />Upserted: {r2.upserted} · Skipped: {r2.skipped}</div>}
+        </div>
+      </div>
+    </SectionCard>
   );
 }

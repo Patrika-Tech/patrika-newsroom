@@ -31,27 +31,27 @@ function normState(s) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/**
- * Given all distinct upload timestamps (pipe-separated, DESC) and the scheduled ms,
- * returns { ms, time } for the most recent upload that gives delay < 150 min (2h30m).
- * If every timestamp exceeds 2.5 hrs, falls back to the earliest (minimum delay).
- * Enforces hard cap: no edition can appear more than 2.5 hours late.
- */
-function pickReleaseTime(allTimesStr, schedMs) {
+// Hard cutoff: no upload after 2:30 AM IST is used for release time.
+// Times stored as IST in DB — extract HH:MM directly from the string.
+function isBefore230(t) {
+  const m = String(t || '').match(/[T ](\d{2}):(\d{2})/);
+  if (!m) return false;
+  const h = +m[1], min = +m[2];
+  return h < 2 || (h === 2 && min <= 30);
+}
+
+// From pipe-separated DESC timestamps, return the most recent upload at or before 2:30 AM IST.
+// If ALL uploads are after 2:30 AM, caps at 02:30:00 of that date.
+function pickLatestBefore230(allTimesStr) {
   if (!allTimesStr) return null;
   const parts = String(allTimesStr).split('|').map(s => s.trim()).filter(Boolean);
-  let fallback = null;
-  for (const t of parts) {
-    const ms = new Date(t).getTime();
-    if (isNaN(ms)) continue;
-    if (fallback === null) fallback = { ms, time: t }; // earliest checked so far
-    const delay = Math.round((ms - schedMs) / 60000);
-    if (delay < 150) return { ms, time: t };           // first (most recent) within 2h30m cap
-  }
-  // All times exceed 2.5 hrs — use earliest available (smallest possible delay)
-  const last = parts[parts.length - 1];
-  if (last) return { ms: new Date(last).getTime(), time: last };
-  return null;
+  const valid = parts.find(t => !isNaN(new Date(t).getTime()) && isBefore230(t));
+  if (valid) return { ms: new Date(valid).getTime(), time: valid };
+  // All after 2:30 AM — cap at 02:30:00 of that date
+  const dateStr = (parts[0] || '').slice(0, 10);
+  if (!dateStr) return null;
+  const capped = `${dateStr} 02:30:00`;
+  return { ms: new Date(capped).getTime(), time: capped };
 }
 
 function fmtDelay(minutes) {
@@ -136,24 +136,13 @@ module.exports = async function handler(req, res) {
         schedDate.setHours(sh, sm, 0, 0);
         const schedMs = schedDate.getTime();
 
-        // Hard cap: no edition should appear more than 2.5 hours late.
-        // If MAX upload gives delay ≥ 150 min, walk back through all distinct
-        // upload times (DESC) and take the most recent one under the cap.
-        const maxMs      = new Date(r.release_time).getTime();
-        let releaseMs    = maxMs;
-        let release_time = r.release_time;
-        if (Math.round((maxMs - schedMs) / 60000) >= 150) {
-          const best = pickReleaseTime(r.all_release_times, schedMs);
-          if (best && best.ms !== maxMs) {
-            releaseMs    = best.ms;
-            release_time = best.time;
-          }
-        }
-
-        // Hard cap: display no more than 2h29m late (149 min).
-        // If every available upload time exceeds 2.5 hrs (e.g. single late revision),
-        // pickReleaseTime falls back to the same timestamp, best.ms === maxMs prevents
-        // a no-op update, and this cap ensures the UI never shows > 2.5 hrs.
+        // Use the most recent upload at or before 2:30 AM IST.
+        // Uploads after 2:30 AM (revisions, late corrections) are ignored.
+        // If all uploads are after 2:30 AM, release_time is capped at 02:30:00.
+        const allTimes   = r.all_release_times || String(r.release_time || '').replace('T', ' ').slice(0, 19);
+        const best       = pickLatestBefore230(allTimes);
+        const releaseMs    = best ? best.ms : new Date(r.release_time).getTime();
+        const release_time = best ? best.time : r.release_time;
         const delay_minutes = Math.min(Math.round((releaseMs - schedMs) / 60000), 149);
 
         return {

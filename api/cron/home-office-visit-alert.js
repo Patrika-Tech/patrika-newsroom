@@ -46,20 +46,65 @@ async function run(triggeredBy = 'cron', targetDate = null) {
 
   console.log(`[home-office-visit-alert] Running for ${date} (triggered by: ${triggeredBy})`);
 
-  // 1. All reporters with Home or Patrika Office label for the date, joined to user
-  const reporters = await query(`
-    SELECT u.EMPNAME AS name, u.Branch AS branch, u.State AS state,
-           v.label_in_location AS label
-    FROM visit_report v
-    JOIN \`user\` u ON v.pan_no = u.pan_no
-    WHERE v.visit_date = ?
-      AND TRIM(v.label_in_location) IN ('Home', 'Patrika Office')
-      AND (v.visit_remark IS NULL OR v.visit_remark != 'Week Off')
-    ORDER BY u.Branch, u.EMPNAME
-  `, [date]).catch(err => {
-    console.error('[home-office-visit-alert] DB error (reporters):', err.message);
-    return [];
+  // 1. All visits with GPS for the date + all registered locations.
+  //    Labels are GPS-verified against registration_location (within 100 m;
+  //    'Home' spots only match the same employee's pan_no) — same logic as
+  //    the Field Visits tab in api/pages.js. Self-entered labels are ignored.
+  const [visits, regRows] = await Promise.all([
+    query(`
+      SELECT v.pan_no, u.EMPNAME AS name, u.Branch AS branch, u.State AS state,
+             CAST(v.LONGITUDE AS DECIMAL(10,7)) AS lat,
+             CAST(v.LATITUDE  AS DECIMAL(10,7)) AS lng
+      FROM visit_report v
+      JOIN \`user\` u ON v.pan_no = u.pan_no
+      WHERE v.visit_date = ?
+        AND (v.visit_remark IS NULL OR v.visit_remark != 'Week Off')
+        AND v.LATITUDE IS NOT NULL AND v.LATITUDE != ''
+        AND v.LONGITUDE IS NOT NULL AND v.LONGITUDE != ''
+      ORDER BY u.Branch, u.EMPNAME
+    `, [date]),
+    query(`
+      SELECT pan_no, location,
+             CAST(latitude  AS DECIMAL(10,7)) AS lat,
+             CAST(longitude AS DECIMAL(10,7)) AS lng
+      FROM registration_location
+      WHERE location IN ('Home', 'Patrika Office')
+        AND latitude IS NOT NULL AND latitude != ''
+        AND longitude IS NOT NULL AND longitude != ''
+    `),
+  ]).catch(err => {
+    console.error('[home-office-visit-alert] DB error:', err.message);
+    return [[], []];
   });
+
+  const toRad = d => d * Math.PI / 180;
+  const distM = (lat1, lng1, lat2, lng2) =>
+    2 * 6371000 * Math.asin(Math.sqrt(
+      Math.sin(toRad(lat2 - lat1) / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(toRad(lng2 - lng1) / 2) ** 2
+    ));
+
+  const regList = regRows
+    .map(r => ({
+      pan: String(r.pan_no || '').trim().toUpperCase(),
+      loc: String(r.location || '').trim(),
+      lat: Number(r.lat), lng: Number(r.lng),
+    }))
+    .filter(r => r.lat && r.lng);
+
+  const reporters = [];
+  for (const v of visits) {
+    const lat = Number(v.lat), lng = Number(v.lng);
+    if (!(lat >= 6 && lat <= 38 && lng >= 68 && lng <= 98)) continue; // bad GPS
+    const pan = String(v.pan_no || '').trim().toUpperCase();
+    let best = null, bestDist = 100; // 100 m threshold
+    for (const reg of regList) {
+      if (reg.loc.toLowerCase() === 'home' && reg.pan !== pan) continue;
+      const d = distM(lat, lng, reg.lat, reg.lng);
+      if (d <= bestDist) { bestDist = d; best = reg; }
+    }
+    if (best) reporters.push({ name: v.name, branch: v.branch, state: v.state, label: best.loc });
+  }
 
   if (!reporters.length) {
     console.log('[home-office-visit-alert] No home/office visits found — no alerts needed.');
@@ -70,8 +115,11 @@ async function run(triggeredBy = 'cron', targetDate = null) {
   const byBranch = {};
   for (const r of reporters) {
     if (!byBranch[r.branch]) byBranch[r.branch] = { state: r.state, home: [], office: [] };
-    if (r.label.trim() === 'Home')           byBranch[r.branch].home.push(r.name);
-    else if (r.label.trim() === 'Patrika Office') byBranch[r.branch].office.push(r.name);
+    if (r.label.trim() === 'Home') {
+      if (!byBranch[r.branch].home.includes(r.name)) byBranch[r.branch].home.push(r.name);
+    } else if (r.label.trim() === 'Patrika Office') {
+      if (!byBranch[r.branch].office.includes(r.name)) byBranch[r.branch].office.push(r.name);
+    }
   }
 
   const branches = Object.keys(byBranch);

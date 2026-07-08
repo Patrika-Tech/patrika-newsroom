@@ -31,6 +31,14 @@ const STATE_NORM = {
 };
 const normState = s => STATE_NORM[(s || '').toLowerCase().trim()] || (s || '').toLowerCase().trim();
 
+// Hard cutoff: 2:30 AM IST — no upload after this time counts as release time.
+function isBefore230(t) {
+  const m = String(t || '').match(/[T ](\d{2}):(\d{2})/);
+  if (!m) return false;
+  const h = +m[1], min = +m[2];
+  return h < 2 || (h === 2 && min <= 30);
+}
+
 // ── Filename parser ───────────────────────────────────────────────────────────
 // Format: DDMMYYYY-EDITIONCODE-PAGEINFO.pdf
 // PAGEINFO examples: 01, 06_Bold, 03_north, 03_north_REV_1, 18_001, 13-Patrika Bold
@@ -177,12 +185,20 @@ module.exports = async function handler(req, res) {
           );
 
           const first_upload    = versions[0]?.first_time   || null;
-          // Release time excludes REV files — MAX last_time across non-REV versions
-          // (falls back to all versions if a page only has REV uploads)
+          // Release time: non-REV versions only, uploaded at or before 2:30 AM IST.
+          // If all non-REV uploads are after 2:30 AM, caps at 02:30:00 of that date.
           const nonRev          = versions.filter(v => v.rev_no === 0);
-          const lastPool        = nonRev.length ? nonRev : versions;
-          const last_upload     = lastPool.reduce((max, v) =>
-            (!max || (v.last_time && v.last_time > max)) ? v.last_time : max, null);
+          const basePool        = nonRev.length ? nonRev : versions;
+          const pool230         = basePool.filter(v => isBefore230(v.last_time));
+          let last_upload;
+          if (pool230.length) {
+            last_upload = pool230.reduce((max, v) =>
+              (!max || (v.last_time && v.last_time > max)) ? v.last_time : max, null);
+          } else {
+            // All uploads after 2:30 AM — cap at 02:30:00 of that date
+            const anyTime = (basePool[0]?.last_time || basePool[0]?.first_time || '').slice(0, 11);
+            last_upload = anyTime ? `${anyTime}02:30:00` : null;
+          }
           const duration_min    = (first_upload && last_upload)
             ? Math.round((new Date(last_upload) - new Date(first_upload)) / 60000)
             : 0;
