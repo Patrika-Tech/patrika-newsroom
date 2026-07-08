@@ -31,26 +31,25 @@ function normState(s) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Hard cutoff: no upload after 2:30 AM IST is used for release time.
-// Times stored as IST in DB — extract HH:MM directly from the string.
-function isBefore230(t) {
-  const m = String(t || '').match(/[T ](\d{2}):(\d{2})/);
-  if (!m) return false;
-  const h = +m[1], min = +m[2];
-  return h < 2 || (h === 2 && min <= 30);
+// Hard cutoff: exclude uploads after 2:30 AM on the publication date.
+// Evening uploads (e.g. 22:58 PM the night before) are valid — they precede pub_date 02:30 AM.
+// Only same-day corrections after 02:30 AM are excluded.
+function isBeforePubDate230(t, pubDate) {
+  if (!t || !pubDate) return false;
+  const tMs   = new Date(String(t).replace('T', ' ').slice(0, 19)).getTime();
+  const capMs = new Date(`${pubDate} 02:30:00`).getTime();
+  return tMs < capMs;
 }
 
-// From pipe-separated DESC timestamps, return the most recent upload at or before 2:30 AM IST.
-// If ALL uploads are after 2:30 AM, caps at 02:30:00 of that date.
-function pickLatestBefore230(allTimesStr) {
+// From pipe-separated DESC timestamps, return the most recent upload before pub_date 02:30 AM.
+// If ALL uploads are after the cut-off (same-day revisions), caps at pub_date 02:30:00.
+function pickLatestBefore230(allTimesStr, pubDate) {
   if (!allTimesStr) return null;
   const parts = String(allTimesStr).split('|').map(s => s.trim()).filter(Boolean);
-  const valid = parts.find(t => !isNaN(new Date(t).getTime()) && isBefore230(t));
-  if (valid) return { ms: new Date(valid).getTime(), time: valid };
-  // All after 2:30 AM — cap at 02:30:00 of that date
-  const dateStr = (parts[0] || '').slice(0, 10);
-  if (!dateStr) return null;
-  const capped = `${dateStr} 02:30:00`;
+  const valid = parts.find(t => !isNaN(new Date(t).getTime()) && isBeforePubDate230(t, pubDate));
+  if (valid) return { ms: new Date(valid.replace('T', ' ').slice(0, 19)).getTime(), time: valid };
+  // All uploads are after 02:30 AM on pub_date — cap at that cut-off
+  const capped = `${pubDate} 02:30:00`;
   return { ms: new Date(capped).getTime(), time: capped };
 }
 
@@ -140,7 +139,7 @@ module.exports = async function handler(req, res) {
         // Uploads after 2:30 AM (revisions, late corrections) are ignored.
         // If all uploads are after 2:30 AM, release_time is capped at 02:30:00.
         const allTimes   = r.all_release_times || String(r.release_time || '').replace('T', ' ').slice(0, 19);
-        const best       = pickLatestBefore230(allTimes);
+        const best       = pickLatestBefore230(allTimes, date);
         const releaseMs    = best ? best.ms : new Date(r.release_time).getTime();
         const release_time = best ? best.time : r.release_time;
         const delay_minutes = Math.min(Math.round((releaseMs - schedMs) / 60000), 149);
