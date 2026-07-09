@@ -5,6 +5,7 @@ import {
   CheckCircle, Clock, AlertCircle, X, ChevronDown,
   Download, Copy, RefreshCw, Filter, LayoutGrid, List,
   BookOpen, Camera, Radio, Tv, Users, Mic2,
+  FileText, File, CalendarDays,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.jsx';
 import { PageHeader, SectionCard } from '../components/UI.jsx';
@@ -565,10 +566,225 @@ function FileRow({ file, onClick }) {
   );
 }
 
+// ── Doc type helpers ───────────────────────────────────────────────────────────
+function fmtDocDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+// ── Circular / Stylesheet tab ──────────────────────────────────────────────────
+function DocTab({ docType }) {
+  const { user } = useApp();
+  const isAdmin   = user?.role === 'Admin';
+  const fileRef   = useRef();
+  const isPdf     = docType === 'circular';
+  const accept    = isPdf ? '.pdf,application/pdf' : '.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  const typeLabel = isPdf ? 'PDF' : 'DOC/DOCX';
+
+  const [docs,    setDocs]    = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busy,    setBusy]    = useState(false);
+  const [err,     setErr]     = useState('');
+  const [form,    setForm]    = useState({ label: '', circular_date: '' });
+  const [file,    setFile]    = useState(null);
+  const [progress, setProgress] = useState(0);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    fetch(`/api/archive-docs?type=${docType}`, { headers: authH() })
+      .then(r => r.json())
+      .then(d => setDocs(d.docs || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [docType]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!file) return setErr('Please select a file');
+    if (!form.label.trim()) return setErr('Label is required');
+    if (!form.circular_date) return setErr('Date is required');
+    setBusy(true); setErr('');
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('doc_type', docType);
+    fd.append('label', form.label.trim());
+    fd.append('circular_date', form.circular_date);
+
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/archive-docs');
+      xhr.setRequestHeader('Authorization', `Bearer ${TOKEN()}`);
+      xhr.upload.onprogress = ev => { if (ev.lengthComputable) setProgress(Math.round(ev.loaded / ev.total * 100)); };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText));
+        else { try { reject(new Error(JSON.parse(xhr.responseText).error)); } catch { reject(new Error(`HTTP ${xhr.status}`)); } }
+      };
+      xhr.onerror = () => reject(new Error('Network error'));
+      xhr.send(fd);
+    }).then(data => {
+      setDocs(prev => [data.doc, ...prev]);
+      setForm({ label: '', circular_date: '' });
+      setFile(null);
+      setProgress(0);
+      if (fileRef.current) fileRef.current.value = '';
+    }).catch(e => setErr(e.message));
+
+    setBusy(false);
+  }
+
+  async function deleteDoc(id) {
+    if (!window.confirm('Delete this document permanently?')) return;
+    await fetch(`/api/archive-docs?id=${id}`, { method: 'DELETE', headers: authH() });
+    setDocs(prev => prev.filter(d => d.id !== id));
+  }
+
+  const Icon = isPdf ? File : FileText;
+  const color = isPdf ? '#d71920' : '#3b82f6';
+
+  return (
+    <div className="mt-4 grid gap-4 lg:grid-cols-3">
+      {/* Upload form */}
+      <div className="card p-4">
+        <h3 className="font-bold text-sm mb-3 flex items-center gap-2">
+          <Upload size={15} style={{ color }} />
+          Upload {isPdf ? 'Circular' : 'Stylesheet'}
+        </h3>
+        <form onSubmit={submit} className="space-y-3">
+          <div>
+            <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--muted)' }}>Label *</label>
+            <input className="input w-full" placeholder={isPdf ? 'e.g. Press Circular — June 2026' : 'e.g. News Stylesheet v3'}
+              value={form.label} onChange={e => setForm(p => ({ ...p, label: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--muted)' }}>
+              <CalendarDays size={11} className="inline mr-1" />Date *
+            </label>
+            <input type="date" className="input w-full"
+              value={form.circular_date} onChange={e => setForm(p => ({ ...p, circular_date: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--muted)' }}>
+              File ({typeLabel}) *
+            </label>
+            <div
+              className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-4 cursor-pointer transition-colors"
+              style={{ borderColor: file ? color : 'var(--border)', background: file ? color + '10' : 'var(--bg)' }}
+              onClick={() => fileRef.current?.click()}>
+              {file ? (
+                <>
+                  <Icon size={22} style={{ color }} />
+                  <div className="text-xs font-semibold mt-1 text-center">{file.name}</div>
+                  <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{fmtSize(file.size)}</div>
+                </>
+              ) : (
+                <>
+                  <Upload size={22} style={{ color: 'var(--muted)' }} />
+                  <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>Click to select {typeLabel}</div>
+                </>
+              )}
+            </div>
+            <input ref={fileRef} type="file" accept={accept} className="hidden"
+              onChange={e => setFile(e.target.files[0] || null)} />
+          </div>
+
+          {err && <div className="text-xs p-2 rounded" style={{ background: '#d7192015', color: '#d71920' }}>{err}</div>}
+
+          {busy && progress > 0 && (
+            <div>
+              <div className="flex justify-between text-xs mb-1" style={{ color: 'var(--muted)' }}>
+                <span>Uploading…</span><span>{progress}%</span>
+              </div>
+              <div className="h-1.5 rounded-full" style={{ background: 'var(--border)' }}>
+                <div className="h-1.5 rounded-full transition-all" style={{ width: `${progress}%`, background: color }} />
+              </div>
+            </div>
+          )}
+
+          <button type="submit" disabled={busy} className="btn-primary w-full flex items-center justify-center gap-2 text-sm">
+            {busy ? <><RefreshCw size={13} className="animate-spin" />Uploading…</> : <><Upload size={13} />Upload</>}
+          </button>
+        </form>
+      </div>
+
+      {/* Document list */}
+      <div className="lg:col-span-2">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-semibold" style={{ color: 'var(--muted)' }}>{docs.length} document{docs.length !== 1 ? 's' : ''}</span>
+          <button onClick={load} className="btn-ghost p-1.5" title="Refresh">
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="card h-16 animate-pulse" />)}</div>
+        ) : docs.length === 0 ? (
+          <div className="card py-16 text-center">
+            <Icon size={36} className="mx-auto mb-2 opacity-25" />
+            <div className="font-semibold text-sm">No {isPdf ? 'circulars' : 'stylesheets'} uploaded yet</div>
+          </div>
+        ) : (
+          <div className="card overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: 'var(--surface-alt, #f8f9fa)', borderBottom: '2px solid var(--border)' }}>
+                  <th className="p-3 text-left font-semibold">Label</th>
+                  <th className="p-3 text-left font-semibold">Date</th>
+                  <th className="p-3 text-left font-semibold">Size</th>
+                  <th className="p-3 text-left font-semibold">Uploaded</th>
+                  <th className="p-3"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                {docs.map(doc => (
+                  <tr key={doc.id} className="hover:bg-opacity-50">
+                    <td className="p-3">
+                      <div className="flex items-center gap-2">
+                        <Icon size={15} style={{ color, flexShrink: 0 }} />
+                        <span className="font-medium">{doc.label}</span>
+                      </div>
+                      <div className="text-xs mt-0.5 truncate max-w-[220px]" style={{ color: 'var(--muted)' }}>{doc.original_name}</div>
+                    </td>
+                    <td className="p-3 text-sm whitespace-nowrap" style={{ color: 'var(--muted)' }}>{fmtDocDate(doc.circular_date)}</td>
+                    <td className="p-3 text-sm whitespace-nowrap" style={{ color: 'var(--muted)' }}>{fmtSize(doc.file_size)}</td>
+                    <td className="p-3 text-xs whitespace-nowrap" style={{ color: 'var(--muted)' }}>{fmtDocDate(doc.uploaded_at)}</td>
+                    <td className="p-3">
+                      <div className="flex items-center gap-1.5">
+                        <a
+                          href={`/uploads/archive-docs/${doc.filename}`}
+                          download={doc.original_name}
+                          className="btn-ghost p-1.5 text-xs flex items-center gap-1"
+                          title="Download">
+                          <Download size={13} />
+                        </a>
+                        {isAdmin && (
+                          <button
+                            onClick={() => deleteDoc(doc.id)}
+                            className="p-1.5 rounded-lg text-xs"
+                            style={{ background: '#d7192015', color: '#d71920' }}
+                            title="Delete">
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function Archive() {
   const { t, state: globalState, branch: globalBranch, user } = useApp();
   const isAdmin = user?.role === 'Admin';
+  const [mainTab, setMainTab] = useState('media');
 
   const [files,      setFiles]      = useState([]);
   const [total,      setTotal]      = useState(0);
@@ -624,162 +840,188 @@ export default function Archive() {
     transcribed:files.filter(f => f.transcript_status === 'done').length,
   };
 
+  const MAIN_TABS = [
+    { key: 'media',      label: 'Media Library',  icon: FileVideo },
+    { key: 'circular',   label: 'Circular',        icon: File      },
+    { key: 'stylesheet', label: 'Stylesheet',      icon: FileText  },
+  ];
+
   return (
     <div>
       <PageHeader
         title={t('nav.archive')}
-        subtitle="Media library — video · audio · photos · Hindi transcription"
+        subtitle="Media library · Circulars · Stylesheets"
       />
 
-      {/* ── Stats strip ──────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-4">
-        {[
-          { label: 'Videos',      value: stats.video,       color: '#d71920', icon: FileVideo },
-          { label: 'Audio',       value: stats.audio,       color: '#C9A227', icon: FileAudio },
-          { label: 'Photos',      value: stats.image,       color: '#16a34a', icon: Image },
-          { label: 'Transcribed', value: stats.transcribed, color: '#3b82f6', icon: CheckCircle },
-        ].map(s => {
-          const SI = s.icon;
+      {/* ── Top-level tab bar ─────────────────────────────────────────────────── */}
+      <div className="flex rounded-xl overflow-hidden border mb-4" style={{ borderColor: 'var(--border)', width: 'fit-content' }}>
+        {MAIN_TABS.map(tab => {
+          const TI = tab.icon;
           return (
-            <div key={s.label} className="card p-3 flex items-center gap-3">
-              <div className="rounded-lg p-2" style={{ background: s.color + '18' }}>
-                <SI size={18} style={{ color: s.color }} />
-              </div>
-              <div>
-                <div className="font-bold text-xl">{s.value}</div>
-                <div className="text-xs" style={{ color: 'var(--muted)' }}>{s.label}</div>
-              </div>
-            </div>
+            <button key={tab.key}
+              onClick={() => setMainTab(tab.key)}
+              className="px-4 py-2 text-sm font-semibold flex items-center gap-2 transition-colors"
+              style={{
+                background: mainTab === tab.key ? 'var(--brand)' : 'transparent',
+                color:      mainTab === tab.key ? '#fff' : 'var(--muted)',
+              }}>
+              <TI size={14} />{tab.label}
+            </button>
           );
         })}
       </div>
 
-      {/* ── Toolbar ──────────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-2 mb-3">
-        {/* Type tabs */}
-        <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
-          {typeTabs.map(tab => {
-            const TI = tab.icon;
+      {/* ── Circular / Stylesheet tabs ────────────────────────────────────────── */}
+      {mainTab === 'circular'   && <DocTab docType="circular" />}
+      {mainTab === 'stylesheet' && <DocTab docType="stylesheet" />}
+
+      {/* ── Media Library ─────────────────────────────────────────────────────── */}
+      {mainTab === 'media' && (<>
+        {/* Stats strip */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-4">
+          {[
+            { label: 'Videos',      value: stats.video,       color: '#d71920', icon: FileVideo },
+            { label: 'Audio',       value: stats.audio,       color: '#C9A227', icon: FileAudio },
+            { label: 'Photos',      value: stats.image,       color: '#16a34a', icon: Image },
+            { label: 'Transcribed', value: stats.transcribed, color: '#3b82f6', icon: CheckCircle },
+          ].map(s => {
+            const SI = s.icon;
             return (
-              <button key={tab.key}
-                onClick={() => setTypeTab(tab.key)}
-                className="px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 transition-colors"
-                style={{
-                  background: typeTab === tab.key ? 'var(--brand)' : 'transparent',
-                  color:      typeTab === tab.key ? '#fff' : 'var(--muted)',
-                }}>
-                {TI && <TI size={13} />}{tab.label}
-              </button>
+              <div key={s.label} className="card p-3 flex items-center gap-3">
+                <div className="rounded-lg p-2" style={{ background: s.color + '18' }}>
+                  <SI size={18} style={{ color: s.color }} />
+                </div>
+                <div>
+                  <div className="font-bold text-xl">{s.value}</div>
+                  <div className="text-xs" style={{ color: 'var(--muted)' }}>{s.label}</div>
+                </div>
+              </div>
             );
           })}
         </div>
 
-        {/* Category filter */}
-        <select className="input py-1.5 text-sm" value={catFilter}
-          onChange={e => setCatFilter(e.target.value)}>
-          <option value="">All Categories</option>
-          {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-        </select>
+        {/* Toolbar */}
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
+            {typeTabs.map(tab => {
+              const TI = tab.icon;
+              return (
+                <button key={tab.key}
+                  onClick={() => setTypeTab(tab.key)}
+                  className="px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 transition-colors"
+                  style={{
+                    background: typeTab === tab.key ? 'var(--brand)' : 'transparent',
+                    color:      typeTab === tab.key ? '#fff' : 'var(--muted)',
+                  }}>
+                  {TI && <TI size={13} />}{tab.label}
+                </button>
+              );
+            })}
+          </div>
 
-        {/* Search */}
-        <div className="relative flex-1 min-w-[180px]">
-          <Search size={14} className="absolute left-3 top-2.5" style={{ color: 'var(--muted)' }} />
-          <input className="input pl-8 py-1.5 text-sm w-full" placeholder="Search title, tags, transcript…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && setSearchQ(search)} />
+          <select className="input py-1.5 text-sm" value={catFilter}
+            onChange={e => setCatFilter(e.target.value)}>
+            <option value="">All Categories</option>
+            {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </select>
+
+          <div className="relative flex-1 min-w-[180px]">
+            <Search size={14} className="absolute left-3 top-2.5" style={{ color: 'var(--muted)' }} />
+            <input className="input pl-8 py-1.5 text-sm w-full" placeholder="Search title, tags, transcript…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && setSearchQ(search)} />
+            {search && (
+              <button onClick={() => { setSearch(''); setSearchQ(''); }}
+                className="absolute right-2 top-2" style={{ color: 'var(--muted)' }}>
+                <X size={14} />
+              </button>
+            )}
+          </div>
           {search && (
-            <button onClick={() => { setSearch(''); setSearchQ(''); }}
-              className="absolute right-2 top-2" style={{ color: 'var(--muted)' }}>
-              <X size={14} />
+            <button onClick={() => setSearchQ(search)}
+              className="btn-primary text-sm px-3 py-1.5 flex items-center gap-1.5">
+              <Search size={13} />Search
             </button>
           )}
-        </div>
-        {search && (
-          <button onClick={() => setSearchQ(search)}
-            className="btn-primary text-sm px-3 py-1.5 flex items-center gap-1.5">
-            <Search size={13} />Search
+
+          <div className="flex rounded-lg overflow-hidden border ml-auto" style={{ borderColor: 'var(--border)' }}>
+            <button onClick={() => setViewMode('grid')} className="px-2.5 py-1.5 transition-colors"
+              style={{ background: viewMode === 'grid' ? 'var(--brand)' : 'transparent', color: viewMode === 'grid' ? '#fff' : 'var(--muted)' }}>
+              <LayoutGrid size={15} />
+            </button>
+            <button onClick={() => setViewMode('list')} className="px-2.5 py-1.5 transition-colors"
+              style={{ background: viewMode === 'list' ? 'var(--brand)' : 'transparent', color: viewMode === 'list' ? '#fff' : 'var(--muted)' }}>
+              <List size={15} />
+            </button>
+          </div>
+
+          <button onClick={() => setShowUpload(true)}
+            className="btn-primary flex items-center gap-2 text-sm px-4 py-1.5">
+            <Upload size={14} /> Upload
           </button>
+          <button onClick={load} className="btn-ghost p-1.5" title="Refresh">
+            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+
+        {/* File list / grid */}
+        {loading ? (
+          <div className={`grid gap-3 ${viewMode === 'grid' ? 'sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4' : ''}`}>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="card animate-pulse" style={{ height: viewMode === 'grid' ? 200 : 52 }} />
+            ))}
+          </div>
+        ) : files.length === 0 ? (
+          <div className="card py-16 text-center">
+            <Upload size={40} className="mx-auto mb-3 opacity-30" />
+            <div className="font-semibold mb-1">No files yet</div>
+            <div className="text-sm mb-4" style={{ color: 'var(--muted)' }}>Upload videos, audio recordings, or photos to get started</div>
+            <button onClick={() => setShowUpload(true)} className="btn-primary mx-auto flex items-center gap-2 text-sm px-5 py-2">
+              <Upload size={14} /> Upload First File
+            </button>
+          </div>
+        ) : viewMode === 'grid' ? (
+          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+            {files.map(f => <FileCard key={f.id} file={f} onClick={setSelected} />)}
+          </div>
+        ) : (
+          <div className="card overflow-hidden">
+            <table className="w-full" style={{ fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: 'var(--surface-alt, #f8f9fa)', borderBottom: '2px solid var(--border)' }}>
+                  <th className="p-3 text-left font-semibold">Title</th>
+                  <th className="p-3 text-left font-semibold">Category</th>
+                  <th className="p-3 text-left font-semibold">State / Branch</th>
+                  <th className="p-3 text-left font-semibold">Date</th>
+                  <th className="p-3 text-left font-semibold">Size</th>
+                  <th className="p-3 text-left font-semibold">Transcript</th>
+                </tr>
+              </thead>
+              <tbody>
+                {files.map(f => <FileRow key={f.id} file={f} onClick={setSelected} />)}
+              </tbody>
+            </table>
+          </div>
         )}
 
-        {/* View toggle */}
-        <div className="flex rounded-lg overflow-hidden border ml-auto" style={{ borderColor: 'var(--border)' }}>
-          <button onClick={() => setViewMode('grid')} className="px-2.5 py-1.5 transition-colors"
-            style={{ background: viewMode === 'grid' ? 'var(--brand)' : 'transparent', color: viewMode === 'grid' ? '#fff' : 'var(--muted)' }}>
-            <LayoutGrid size={15} />
-          </button>
-          <button onClick={() => setViewMode('list')} className="px-2.5 py-1.5 transition-colors"
-            style={{ background: viewMode === 'list' ? 'var(--brand)' : 'transparent', color: viewMode === 'list' ? '#fff' : 'var(--muted)' }}>
-            <List size={15} />
-          </button>
-        </div>
-
-        {/* Upload button */}
-        <button onClick={() => setShowUpload(true)}
-          className="btn-primary flex items-center gap-2 text-sm px-4 py-1.5">
-          <Upload size={14} /> Upload
-        </button>
-        <button onClick={load} className="btn-ghost p-1.5" title="Refresh">
-          <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
-        </button>
-      </div>
-
-      {/* ── File list / grid ─────────────────────────────────────────────────── */}
-      {loading ? (
-        <div className={`grid gap-3 ${viewMode === 'grid' ? 'sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4' : ''}`}>
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="card animate-pulse" style={{ height: viewMode === 'grid' ? 200 : 52 }} />
-          ))}
-        </div>
-      ) : files.length === 0 ? (
-        <div className="card py-16 text-center">
-          <Upload size={40} className="mx-auto mb-3 opacity-30" />
-          <div className="font-semibold mb-1">No files yet</div>
-          <div className="text-sm mb-4" style={{ color: 'var(--muted)' }}>Upload videos, audio recordings, or photos to get started</div>
-          <button onClick={() => setShowUpload(true)} className="btn-primary mx-auto flex items-center gap-2 text-sm px-5 py-2">
-            <Upload size={14} /> Upload First File
-          </button>
-        </div>
-      ) : viewMode === 'grid' ? (
-        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-          {files.map(f => <FileCard key={f.id} file={f} onClick={setSelected} />)}
-        </div>
-      ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full" style={{ fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: 'var(--surface-alt, #f8f9fa)', borderBottom: '2px solid var(--border)' }}>
-                <th className="p-3 text-left font-semibold">Title</th>
-                <th className="p-3 text-left font-semibold">Category</th>
-                <th className="p-3 text-left font-semibold">State / Branch</th>
-                <th className="p-3 text-left font-semibold">Date</th>
-                <th className="p-3 text-left font-semibold">Size</th>
-                <th className="p-3 text-left font-semibold">Transcript</th>
-              </tr>
-            </thead>
-            <tbody>
-              {files.map(f => <FileRow key={f.id} file={f} onClick={setSelected} />)}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Modals */}
-      {showUpload && (
-        <UploadModal
-          onClose={() => setShowUpload(false)}
-          onUploaded={f => { setFiles(prev => [f, ...prev]); setTotal(t => t + 1); }}
-          locations={locations}
-        />
-      )}
-      {selected && (
-        <DetailModal
-          file={selected}
-          onClose={() => setSelected(null)}
-          onDeleted={id => { setFiles(prev => prev.filter(f => f.id !== id)); setTotal(t => t - 1); }}
-          isAdmin={isAdmin}
-        />
-      )}
+        {/* Modals */}
+        {showUpload && (
+          <UploadModal
+            onClose={() => setShowUpload(false)}
+            onUploaded={f => { setFiles(prev => [f, ...prev]); setTotal(t => t + 1); }}
+            locations={locations}
+          />
+        )}
+        {selected && (
+          <DetailModal
+            file={selected}
+            onClose={() => setSelected(null)}
+            onDeleted={id => { setFiles(prev => prev.filter(f => f.id !== id)); setTotal(t => t - 1); }}
+            isAdmin={isAdmin}
+          />
+        )}
+      </>)}
     </div>
   );
 }

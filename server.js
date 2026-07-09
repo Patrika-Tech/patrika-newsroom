@@ -156,6 +156,10 @@ app.get('/api/archive',                h('./api/archive'));
 // Serve uploaded archive files
 app.use('/uploads/archive', require('express').static(require('path').join(__dirname, 'uploads', 'archive')));
 
+// ── Archive Docs (Circular / Stylesheet) ──────────────────────────────────────
+app.all('/api/archive-docs',           require('./api/archive-docs'));  // multipart + GET + DELETE
+app.use('/uploads/archive-docs', require('express').static(require('path').join(__dirname, 'uploads', 'archive-docs')));
+
 // ── Field Reporting ───────────────────────────────────────────────────────────
 app.all('/api/field/reporter-login',    h('./api/field/reporter-login')); // employee table auth
 app.post('/api/field/upload',           require('./api/field/upload'));   // multipart
