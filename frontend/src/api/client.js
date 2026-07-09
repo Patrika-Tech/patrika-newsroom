@@ -168,6 +168,8 @@ export const api = {
   updateBreakingNews: (id, data) => request(`/digital/breaking-news?id=${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteBreakingNews: (id)       => request(`/digital/breaking-news?id=${id}`, { method: 'DELETE' }),
 
+  chartbeat: (period = 'today') => request(`/digital/chartbeat?period=${period}`),
+
   uploadDigitalTargets: async (file) => {
     const token = localStorage.getItem('pk_token');
     const fd = new FormData(); fd.append('file', file);

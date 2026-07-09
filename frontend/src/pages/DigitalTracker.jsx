@@ -7,7 +7,7 @@
  *   individual      → sees only their own data
  *   Admin (newsroom)→ sees all users, all teams, settings tab
  */
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import {
   Zap, Users, Target, TrendingUp, Upload, Plus, Edit2, Trash2, X, Save,
   ChevronDown, ChevronUp, Search, RefreshCw, FileSpreadsheet, Eye, EyeOff,
@@ -103,6 +103,16 @@ const TABS = [
     lightFg: '#047857',
     teamLeadOk: true,   // visible to team_lead + admin
     adminOnly: false,
+  },
+  {
+    key:   'performance',
+    label: 'Performance',
+    desc:  'Team/person — stories & UV from Chartbeat',
+    icon:  BarChart3,
+    color: '#0891b2',
+    grad:  'linear-gradient(135deg,#0891b2,#0e7490)',
+    lightBg: '#e0f2fe',
+    lightFg: '#0369a1',
   },
   {
     key:   'settings',
@@ -224,6 +234,9 @@ export default function DigitalTracker() {
       )}
       {tab === 'team-leader' && (canAdmin || isTeamLead) && (
         <TeamLeaderTab user={user} canAdmin={canAdmin} />
+      )}
+      {tab === 'performance' && (
+        <PerformanceTab user={user} canAdmin={canAdmin} />
       )}
       {tab === 'settings' && canAdmin && (
         <SettingsTab month={today} onRefresh={() => {}} />
@@ -361,6 +374,297 @@ function TeamTab({ loading, data }) {
         </SectionCard>
       ))}
       {!teams.length && <div className="text-center py-8" style={{ color: 'var(--muted)' }}>No team data for this month</div>}
+    </div>
+  );
+}
+
+// ── Performance Tab (Chartbeat) ───────────────────────────────────────────────
+const PERIODS = [
+  { key: 'today', label: 'Today' },
+  { key: 'week',  label: 'Last 7 Days' },
+  { key: 'month', label: 'Last 30 Days' },
+];
+
+function PerformanceTab({ user, canAdmin }) {
+  const isTeamLead = user?.digital_role === 'team_lead';
+  const myTeam     = user?.team || '';
+
+  const [period,    setPeriod]    = useState('today');
+  const [articles,  setArticles]  = useState([]);
+  const [users,     setUsers]     = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [fetchedAt, setFetchedAt] = useState('');
+  const [expanded,  setExpanded]  = useState({});
+  const [sortKey,   setSortKey]   = useState('uv');
+
+  const load = useCallback(async (p) => {
+    setLoading(true);
+    try {
+      const [cb, ul] = await Promise.all([
+        api.chartbeat(p),
+        api.digitalUsers(),
+      ]);
+      setArticles(cb.articles || []);
+      setUsers(ul.users || []);
+      setFetchedAt(cb.fetched_at ? new Date(cb.fetched_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '');
+    } catch (e) {
+      console.error('[chartbeat]', e.message);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(period); }, [load, period]);
+
+  const changePeriod = (p) => { setPeriod(p); setExpanded({}); };
+
+  // Seed ALL users from settings with 0, then overlay Chartbeat data
+  const authorStats = useMemo(() => {
+    const stats = {};
+    users.forEach(u => {
+      const key = (u.name || '').toLowerCase().trim();
+      if (!key) return;
+      stats[key] = { authorKey: key, name: u.name, team: u.team || '—', role: u.role || '', stories: 0, uv: 0, topStory: null, inSettings: true };
+    });
+    articles.forEach(art => {
+      const key = (art.author || '').toLowerCase().trim();
+      if (!key) return;
+      if (!stats[key]) {
+        stats[key] = { authorKey: key, name: art.author, team: '—', role: '', stories: 0, uv: 0, topStory: null, inSettings: false };
+      }
+      // Backend aggregates per-author: use stories count directly if provided
+      stats[key].stories += art.stories || 1;
+      stats[key].uv      += art.page_uniques || 0;
+      if (!stats[key].topStory || (art.page_uniques || 0) > (stats[key].topStory.page_uniques || 0)) {
+        stats[key].topStory = art;
+      }
+    });
+    return Object.values(stats).sort((a, b) => b[sortKey] - a[sortKey]);
+  }, [articles, users, sortKey]);
+
+  // Unmatched = in Chartbeat but not in Settings user table
+  const unmatchedStats = useMemo(() =>
+    authorStats.filter(s => !s.inSettings && s.stories > 0),
+  [authorStats]);
+
+  const unmatchedTotals = useMemo(() => ({
+    stories: unmatchedStats.reduce((s, a) => s + a.stories, 0),
+    uv:      unmatchedStats.reduce((s, a) => s + a.uv, 0),
+    count:   unmatchedStats.length,
+  }), [unmatchedStats]);
+
+  // Group only Settings users by team
+  const teamGroups = useMemo(() => {
+    const groups = {};
+    authorStats.filter(s => s.inSettings).forEach(s => {
+      const t = s.team;
+      if (!groups[t]) groups[t] = { team: t, stories: 0, uv: 0, members: [] };
+      groups[t].stories += s.stories;
+      groups[t].uv      += s.uv;
+      groups[t].members.push(s);
+    });
+    const sorted = Object.values(groups).sort((a, b) => b[sortKey] - a[sortKey]);
+    return (isTeamLead && !canAdmin && myTeam)
+      ? sorted.filter(g => g.team === myTeam)
+      : sorted;
+  }, [authorStats, sortKey, isTeamLead, canAdmin, myTeam]);
+
+  const activeAuthors = authorStats.filter(a => a.inSettings && a.stories > 0);
+  const totalStories  = activeAuthors.reduce((s, a) => s + a.stories, 0);
+  const totalUV       = activeAuthors.reduce((s, a) => s + a.uv, 0);
+  const topAuthor     = activeAuthors[0] || null;
+  const maxUV         = topAuthor?.uv || 1;
+  const periodLabel   = PERIODS.find(p => p.key === period)?.label || '';
+
+  const toggleTeam = (t) => setExpanded(p => ({ ...p, [t]: !p[t] }));
+
+  function UVBar({ value }) {
+    const pct = Math.round((value / maxUV) * 100);
+    return (
+      <div className="flex items-center gap-2">
+        <div className="h-1.5 rounded-full flex-1 min-w-[60px]" style={{ background: 'var(--border)' }}>
+          <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, background: value > 0 ? '#0891b2' : 'transparent' }} />
+        </div>
+        <span className="text-xs font-semibold tabular-nums" style={{ color: value > 0 ? '#0891b2' : 'var(--muted)', minWidth: 52, textAlign: 'right' }}>
+          {value > 0 ? value.toLocaleString('en-IN') : '—'}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+
+      {/* Period tabs */}
+      <div className="flex items-center gap-1 p-1 rounded-xl w-fit" style={{ background: 'var(--border)' }}>
+        {PERIODS.map(p => (
+          <button key={p.key} onClick={() => changePeriod(p.key)}
+            className="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all"
+            style={{ background: period === p.key ? '#0891b2' : 'transparent', color: period === p.key ? '#fff' : 'var(--muted)' }}>
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="space-y-3">
+          {[1,2,3,4,5].map(i => <div key={i} className="card h-14 animate-pulse" />)}
+        </div>
+      ) : (<>
+
+        {/* Summary cards */}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <SummaryCard icon={Newspaper}  label={`Stories · ${periodLabel}`}  value={totalStories.toLocaleString('en-IN')} color="#0891b2" />
+          <SummaryCard icon={Globe}      label={`Total UV · ${periodLabel}`} value={totalUV >= 1000 ? `${(totalUV/1000).toFixed(1)}K` : totalUV} color="#0891b2" />
+          <SummaryCard icon={Users}      label="Total Authors"               value={users.length} color="#0891b2" />
+          <SummaryCard icon={TrendingUp} label={`Top Author UV · ${periodLabel}`}
+            value={topAuthor ? (topAuthor.uv >= 1000 ? `${(topAuthor.uv/1000).toFixed(1)}K` : topAuthor.uv) : '—'}
+            sub={topAuthor?.name || 'No data'}
+            color="#0891b2" />
+        </div>
+
+        {/* Toolbar */}
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-1 text-xs" style={{ color: 'var(--muted)' }}>
+            <RefreshCw size={12} />
+            <span>Chartbeat · updated {fetchedAt || '—'} · {activeAuthors.length} active of {users.length} authors</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium" style={{ color: 'var(--muted)' }}>Sort by:</span>
+            <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
+              {[['uv','UV'],['stories','Stories']].map(([k,l]) => (
+                <button key={k} onClick={() => setSortKey(k)}
+                  className="px-3 py-1 text-xs font-semibold transition-colors"
+                  style={{ background: sortKey === k ? '#0891b2' : 'transparent', color: sortKey === k ? '#fff' : 'var(--muted)' }}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => load(period)} className="btn-ghost p-1.5" title="Refresh">
+              <RefreshCw size={14} />
+            </button>
+          </div>
+        </div>
+
+        {/* Team-grouped table */}
+        <div className="space-y-2">
+          {teamGroups.map(grp => {
+            const open = expanded[grp.team] !== false;
+            return (
+              <div key={grp.team} className="card overflow-hidden">
+                <button
+                  className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                  onClick={() => toggleTeam(grp.team)}>
+                  <div className="flex items-center gap-3">
+                    {open ? <ChevronUp size={15} style={{ color: 'var(--muted)' }} /> : <ChevronDown size={15} style={{ color: 'var(--muted)' }} />}
+                    <div className="rounded-md p-1.5" style={{ background: '#e0f2fe' }}>
+                      <Users2 size={14} style={{ color: '#0369a1' }} />
+                    </div>
+                    <span className="font-bold text-sm">{grp.team}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: '#e0f2fe', color: '#0369a1' }}>
+                      {grp.members.length} members
+                    </span>
+                    {grp.members.filter(m => m.stories > 0).length > 0 && (
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: '#dcfce7', color: '#15803d' }}>
+                        {grp.members.filter(m => m.stories > 0).length} active
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-6 text-sm">
+                    <div className="text-right">
+                      <div className="text-xs font-semibold" style={{ color: 'var(--muted)' }}>STORIES</div>
+                      <div className="font-bold">{grp.stories || '—'}</div>
+                    </div>
+                    <div className="text-right" style={{ minWidth: 90 }}>
+                      <div className="text-xs font-semibold" style={{ color: 'var(--muted)' }}>UV</div>
+                      <div className="font-bold" style={{ color: grp.uv > 0 ? '#0891b2' : 'var(--muted)' }}>
+                        {grp.uv > 0 ? (grp.uv >= 1000 ? `${(grp.uv/1000).toFixed(1)}K` : grp.uv.toLocaleString('en-IN')) : '—'}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+
+                {open && (
+                  <div className="border-t" style={{ borderColor: 'var(--border)' }}>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr style={{ background: 'var(--surface-alt,#f9fafb)', borderBottom: '1px solid var(--border)' }}>
+                          <th className="px-4 py-2 text-left text-xs font-semibold" style={{ color: 'var(--muted)', paddingLeft: 48 }}>Author</th>
+                          <th className="px-4 py-2 text-center text-xs font-semibold" style={{ color: 'var(--muted)', width: 80 }}>Stories</th>
+                          <th className="px-4 py-2 text-xs font-semibold" style={{ color: 'var(--muted)', minWidth: 180 }}>UV</th>
+                          <th className="px-4 py-2 text-left text-xs font-semibold" style={{ color: 'var(--muted)' }}>Top Story</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {grp.members.map((m, idx) => (
+                          <tr key={m.authorKey}
+                            className="border-t hover:bg-black/5 dark:hover:bg-white/5"
+                            style={{ borderColor: 'var(--border)', opacity: m.stories === 0 ? 0.55 : 1 }}>
+                            <td className="px-4 py-2.5" style={{ paddingLeft: 48 }}>
+                              <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+                                  style={{ background: m.stories > 0 ? `hsl(${(idx * 47 + 200) % 360},60%,45%)` : '#9ca3af' }}>
+                                  {(m.name[0] || '?').toUpperCase()}
+                                </div>
+                                <div>
+                                  <div className="font-semibold text-sm leading-tight">{m.name}</div>
+                                  <div className="text-[10px]" style={{ color: 'var(--muted)' }}>{m.role}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-2.5 text-center font-bold" style={{ color: m.stories > 0 ? 'var(--text)' : 'var(--muted)' }}>
+                              {m.stories > 0 ? m.stories : '—'}
+                            </td>
+                            <td className="px-4 py-2.5" style={{ minWidth: 180 }}>
+                              <UVBar value={m.uv} />
+                            </td>
+                            <td className="px-4 py-2.5" style={{ maxWidth: 300 }}>
+                              {m.topStory ? (
+                                <div>
+                                  <div className="text-xs leading-snug line-clamp-2" style={{ color: 'var(--text)' }}>{m.topStory.title}</div>
+                                  <div className="text-[10px] mt-0.5 font-semibold" style={{ color: '#0891b2' }}>
+                                    {(m.topStory.page_uniques || 0).toLocaleString('en-IN')} UV
+                                  </div>
+                                </div>
+                              ) : <span style={{ color: 'var(--muted)', fontSize: 11 }}>No stories {periodLabel.toLowerCase()}</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Other authors (in Chartbeat but not in Settings) — totals only */}
+        {unmatchedTotals.count > 0 && (
+          <div className="card px-4 py-3 flex items-center justify-between" style={{ borderLeft: '3px solid #94a3b8' }}>
+            <div className="flex items-center gap-3">
+              <div className="rounded-md p-1.5" style={{ background: '#f1f5f9' }}>
+                <Users size={14} style={{ color: '#64748b' }} />
+              </div>
+              <div>
+                <div className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Other Authors</div>
+                <div className="text-xs" style={{ color: 'var(--muted)' }}>{unmatchedTotals.count} authors in Chartbeat not added to Settings</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-8">
+              <div className="text-right">
+                <div className="text-xs font-semibold" style={{ color: 'var(--muted)' }}>STORIES</div>
+                <div className="font-bold text-sm">{unmatchedTotals.stories}</div>
+              </div>
+              <div className="text-right" style={{ minWidth: 80 }}>
+                <div className="text-xs font-semibold" style={{ color: 'var(--muted)' }}>UV</div>
+                <div className="font-bold text-sm" style={{ color: '#64748b' }}>
+                  {unmatchedTotals.uv >= 1000 ? `${(unmatchedTotals.uv/1000).toFixed(1)}K` : unmatchedTotals.uv.toLocaleString('en-IN')}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </>)}
     </div>
   );
 }
