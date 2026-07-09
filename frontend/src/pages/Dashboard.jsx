@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import {
   FileText, Clock, AlertCircle, MapPin, Scale, Users,
-  Bell, Camera, Newspaper,
+  Bell, Camera, Newspaper, TrendingUp,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.jsx';
 import { api } from '../api/client.js';
@@ -15,11 +15,35 @@ const PIE_COLORS = ['#d71920', '#C9A227', '#8c0a0e', '#e8843a', '#3b82f6', '#16a
 
 export default function Dashboard() {
   const { t, state, branch } = useApp();
-  const [d, setD] = useState(null);
+  const [d, setD]           = useState(null);
+  const [topDelay, setTopDelay] = useState([]);
 
   useEffect(() => {
     setD(null);
     api.dashboard(state, branch).then(setD).catch(() => setD({}));
+    api.weeklyTrend(state, branch, 7).then(r => {
+      // Aggregate last 7 days: sum delay_minutes per edition, compute avg
+      const map = {};
+      (r.editions || []).forEach(ed => {
+        const vals = Object.values(ed.days || {}).map(day => day.delay_minutes).filter(m => m > 0);
+        if (!vals.length) return;
+        const avg = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+        const max = Math.max(...vals);
+        map[ed.code] = {
+          edition_name: ed.edition_name,
+          unit:         ed.unit,
+          state:        ed.state,
+          delayed_days: ed.delayed_days,
+          avg_delay:    avg,
+          max_delay:    max,
+        };
+      });
+      const sorted = Object.values(map)
+        .filter(e => e.avg_delay > 0)
+        .sort((a, b) => b.avg_delay - a.avg_delay)
+        .slice(0, 10);
+      setTopDelay(sorted);
+    }).catch(() => {});
   }, [state, branch]);
 
   if (!d) return <Skel />;
@@ -177,6 +201,73 @@ export default function Dashboard() {
             </>
           ) : (
             <EmptyState msg="No profile data available" />
+          )}
+        </SectionCard>
+      </div>
+
+      {/* ── Top 10 Delayed Editions (Last 7 Days) ───────────────────────────── */}
+      <div className="mt-4">
+        <SectionCard title="Top 10 Delayed Editions — Last 7 Days">
+          {topDelay.length === 0 ? (
+            <EmptyState msg="No delay data for the past 7 days" />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left" style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}>
+                    <th className="pb-2 pr-4 font-medium w-6">#</th>
+                    <th className="pb-2 pr-4 font-medium">Edition</th>
+                    <th className="pb-2 pr-4 font-medium">Unit</th>
+                    <th className="pb-2 pr-4 font-medium">State</th>
+                    <th className="pb-2 pr-4 font-medium text-center">Days Late</th>
+                    <th className="pb-2 pr-4 font-medium text-center">Avg Delay</th>
+                    <th className="pb-2 font-medium text-center">Max Delay</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                  {topDelay.map((e, i) => {
+                    const avgH = Math.floor(e.avg_delay / 60);
+                    const avgM = e.avg_delay % 60;
+                    const maxH = Math.floor(e.max_delay / 60);
+                    const maxM = e.max_delay % 60;
+                    const fmtD = (h, m) => `+${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+                    const rankColor = i === 0 ? '#dc2626' : i === 1 ? '#ea580c' : i === 2 ? '#ca8a04' : 'var(--muted)';
+                    const barPct = topDelay[0]?.avg_delay ? Math.round((e.avg_delay / topDelay[0].avg_delay) * 100) : 0;
+                    return (
+                      <tr key={e.edition_name} className="group">
+                        <td className="py-2.5 pr-4">
+                          <span className="text-xs font-bold" style={{ color: rankColor }}>
+                            {i + 1}
+                          </span>
+                        </td>
+                        <td className="py-2.5 pr-4 font-medium">{e.edition_name}</td>
+                        <td className="py-2.5 pr-4 text-xs" style={{ color: 'var(--muted)' }}>{e.unit || '—'}</td>
+                        <td className="py-2.5 pr-4 text-xs" style={{ color: 'var(--muted)' }}>{e.state || '—'}</td>
+                        <td className="py-2.5 pr-4 text-center">
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                            style={{ background: '#fee2e2', color: '#b91c1c' }}>
+                            {e.delayed_days}/7
+                          </span>
+                        </td>
+                        <td className="py-2.5 pr-4">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-1.5 rounded-full" style={{ background: 'var(--border)', minWidth: 60 }}>
+                              <div className="h-1.5 rounded-full" style={{ width: `${barPct}%`, background: '#dc2626' }} />
+                            </div>
+                            <span className="text-xs font-semibold tabular-nums" style={{ color: '#dc2626', minWidth: 48 }}>
+                              {fmtD(avgH, avgM)}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 text-center text-xs font-semibold tabular-nums" style={{ color: '#ea580c' }}>
+                          {fmtD(maxH, maxM)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </SectionCard>
       </div>
