@@ -588,6 +588,7 @@ function DocTab({ docType }) {
   const [form,    setForm]    = useState({ label: '', circular_date: '' });
   const [file,    setFile]    = useState(null);
   const [progress, setProgress] = useState(0);
+  const [viewing,  setViewing]  = useState(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -753,7 +754,7 @@ function DocTab({ docType }) {
                     <td className="p-3">
                       <div className="flex items-center gap-1.5">
                         <button
-                          onClick={() => window.open(`/uploads/archive-docs/${doc.filename}`, '_blank')}
+                          onClick={() => setViewing(doc)}
                           className="btn-ghost p-1.5 text-xs flex items-center gap-1"
                           title="View">
                           <Eye size={13} />
@@ -785,6 +786,67 @@ function DocTab({ docType }) {
       </div>
     </div>
 
+    {/* Document viewer modal */}
+    {viewing && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-3">
+        <div className="absolute inset-0 bg-black/60" onClick={() => setViewing(null)} />
+        <div className="relative z-10 flex flex-col w-full max-w-5xl rounded-2xl overflow-hidden shadow-2xl"
+          style={{ height: '92vh', background: 'var(--surface)' }}>
+
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b shrink-0"
+            style={{ borderColor: 'var(--border)' }}>
+            <div className="flex items-center gap-2 min-w-0">
+              <File size={16} style={{ color: isPdf ? '#d71920' : '#3b82f6', flexShrink: 0 }} />
+              <span className="font-semibold text-sm truncate">{viewing.label}</span>
+              <span className="text-xs ml-1 shrink-0 px-2 py-0.5 rounded-full"
+                style={{ background: 'var(--border)', color: 'var(--muted)' }}>
+                {fmtDocDate(viewing.circular_date)}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <a href={`/api/archive-docs/view/${viewing.filename}`} download={viewing.original_name}
+                className="btn-ghost flex items-center gap-1.5 text-xs px-3 py-1.5">
+                <Download size={13} /> Download
+              </a>
+              <button onClick={() => setViewing(null)} className="btn-ghost p-1.5 rounded-lg">
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+
+          {/* PDF viewer */}
+          {isPdf ? (
+            <object
+              key={viewing.id}
+              data={`/api/archive-docs/view/${viewing.filename}`}
+              type="application/pdf"
+              className="flex-1 w-full"
+              style={{ border: 'none', background: '#525659' }}>
+              <div className="flex flex-col items-center justify-center h-full gap-3"
+                style={{ color: 'var(--muted)' }}>
+                <File size={48} className="opacity-30" />
+                <p className="text-sm">Browser cannot display this PDF inline.</p>
+                <a href={`/api/archive-docs/view/${viewing.filename}`} download={viewing.original_name}
+                  className="btn-primary flex items-center gap-2 text-sm px-4 py-2">
+                  <Download size={14} /> Download PDF
+                </a>
+              </div>
+            </object>
+          ) : (
+            <div className="flex flex-col items-center justify-center flex-1 gap-4"
+              style={{ color: 'var(--muted)' }}>
+              <FileText size={52} className="opacity-25" />
+              <p className="text-sm font-medium">DOC/DOCX files cannot be previewed in browser.</p>
+              <a href={`/api/archive-docs/view/${viewing.filename}`} download={viewing.original_name}
+                className="btn-primary flex items-center gap-2 text-sm px-5 py-2">
+                <Download size={14} /> Download to Open
+              </a>
+            </div>
+          )}
+        </div>
+      </div>
+    )}
     </>
   );
 }

@@ -4,6 +4,8 @@
  * GET    ?type=circular|stylesheet  → list documents
  * POST   multipart — upload a document
  * DELETE ?id=N                      → delete document
+ *
+ * /api/archive-docs/view/:filename  → serve file inline (Content-Disposition: inline)
  */
 const fs     = require('fs');
 const path   = require('path');
@@ -105,4 +107,24 @@ module.exports = function handler(req, res) {
   }
 
   return res.status(405).json({ error: 'Method not allowed' });
+};
+
+// Serve file inline for in-browser preview (no auth required for viewing)
+module.exports.viewFile = function (req, res) {
+  const filename = req.params.filename || req.query.filename || '';
+  if (!filename || filename.includes('..') || filename.includes('/')) {
+    return res.status(400).send('Invalid filename');
+  }
+  const filePath = path.join(UPLOAD_DIR, filename);
+  if (!fs.existsSync(filePath)) return res.status(404).send('File not found');
+
+  const ext  = path.extname(filename).toLowerCase();
+  const mime = ext === '.pdf' ? 'application/pdf'
+    : ext === '.docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    : 'application/msword';
+
+  res.setHeader('Content-Type', mime);
+  res.setHeader('Content-Disposition', 'inline');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.sendFile(filePath);
 };

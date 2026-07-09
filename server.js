@@ -157,7 +157,8 @@ app.get('/api/archive',                h('./api/archive'));
 app.use('/uploads/archive', require('express').static(require('path').join(__dirname, 'uploads', 'archive')));
 
 // ── Archive Docs (Circular / Stylesheet) ──────────────────────────────────────
-app.all('/api/archive-docs',           require('./api/archive-docs'));  // multipart + GET + DELETE
+app.get('/api/archive-docs/view/:filename', require('./api/archive-docs').viewFile);  // inline preview
+app.all('/api/archive-docs',               require('./api/archive-docs'));              // multipart + GET + DELETE
 app.use('/uploads/archive-docs', require('express').static(require('path').join(__dirname, 'uploads', 'archive-docs')));
 
 // ── Field Reporting ───────────────────────────────────────────────────────────
