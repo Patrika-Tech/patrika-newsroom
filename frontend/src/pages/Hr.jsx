@@ -8,7 +8,7 @@ import {
   X, CalendarClock, Users, UserCheck, UserX,
   Building2, Save, Loader2, Download, Plus, Upload, CheckCircle2,
   Clock, Star, BarChart2, ShieldCheck, FileText, Briefcase, Trash2,
-  ChevronDown, RefreshCw, Camera, PenLine, Monitor,
+  ChevronDown, RefreshCw, Camera, PenLine, Monitor, Newspaper,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.jsx';
 import { api } from '../api/client.js';
@@ -70,18 +70,19 @@ function downloadExcel(rows, includesSalary, filename = 'employees') {
 const COLORS = ['#C9A227', '#d71920', '#3b82f6', '#10b981', '#8b5cf6', '#f97316', '#06b6d4'];
 const GRADE_COLOR = { A: '#10b981', B: '#3b82f6', C: '#C9A227', D: '#d71920' };
 const TABS = [
-  { key: 'overview',     label: 'Overview',            icon: BarChart2  },
-  { key: 'recruitment',  label: 'Recruitment',         icon: Briefcase  },
-  { key: 'training',     label: 'Training & Induction',icon: Star       },
-  { key: 'grading',      label: 'PLI & Grading',       icon: ShieldCheck},
-  { key: 'admin',        label: 'Admin',               icon: Building2  },
+  { key: 'overview',      label: 'Overview',            icon: BarChart2  },
+  { key: 'recruitment',   label: 'Recruitment',         icon: Briefcase  },
+  { key: 'training',      label: 'Training & Induction',icon: Star       },
+  { key: 'grading',       label: 'PLI & Grading',       icon: ShieldCheck},
+  { key: 'correspondent', label: 'Correspondent',       icon: Newspaper  },
+  { key: 'admin',         label: 'Admin',               icon: Building2  },
 ];
 
 const currentMonth = () => new Date().toISOString().slice(0, 7);
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function Hr() {
-  const { t, canEditHr, canViewHr, canEditGrading, canEditTraining, isBranchRestricted, state: globalState, branch: globalBranch } = useApp();
+  const { t, canEditHr, canViewHr, canEditGrading, canEditTraining, isAdmin, isBranchRestricted, user, state: globalState, branch: globalBranch } = useApp();
   const [tab,     setTab]     = useState('overview');
   const [emps,    setEmps]    = useState([]);
   const [rets,    setRets]    = useState([]);
@@ -108,16 +109,16 @@ export default function Hr() {
     return matchState && matchBranch;
   }), [rets, globalState, globalBranch]);
 
-  // Charts â€” all use `filtered` so they respond to top-left state/branch selection
+  // Charts - all use `filtered` so they respond to top-left state/branch selection
   const ageBuckets = useMemo(() => {
-    const b = { '20â€“29': 0, '30â€“39': 0, '40â€“49': 0, '50â€“59': 0, '60+': 0 };
+    const b = { '20-29': 0, '30-39': 0, '40-49': 0, '50-59': 0, '60+': 0 };
     filtered.forEach(e => {
       const a = calcAge(e.DOB);
       if (!a) return;
-      if (a < 30) b['20â€“29']++;
-      else if (a < 40) b['30â€“39']++;
-      else if (a < 50) b['40â€“49']++;
-      else if (a < 60) b['50â€“59']++;
+      if (a < 30) b['20-29']++;
+      else if (a < 40) b['30-39']++;
+      else if (a < 50) b['40-49']++;
+      else if (a < 60) b['50-59']++;
       else b['60+']++;
     });
     return Object.entries(b).map(([range, count]) => ({ range, count }));
@@ -146,8 +147,12 @@ export default function Hr() {
       {/* â”€â”€ Tab Navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="flex gap-1 mb-5 border-b overflow-x-auto" style={{ borderColor: 'var(--border)' }}>
         {TABS
-          // Regional Editor: hide Recruitment & Admin (view-only on Overview/Training/Grading)
-          .filter(({ key }) => isBranchRestricted() ? !['recruitment', 'admin'].includes(key) : true)
+          .filter(({ key }) => {
+            if (key === 'admin') return isAdmin();
+            if (key === 'correspondent') return ['State Head', 'Regional Editor'].includes(user?.role) && (user?.state || '').toLowerCase() === 'rajasthan';
+            if (isBranchRestricted()) return key !== 'recruitment';
+            return true;
+          })
           .map(({ key, label, icon: Icon }) => (
           <button
             key={key}
@@ -174,10 +179,11 @@ export default function Hr() {
           onDownload={() => downloadExcel(filtered, canViewHr())}
         />
       )}
-      {tab === 'recruitment'  && <RecruitmentTab />}
-      {tab === 'training'     && <TrainingTab emps={filtered} canEditHr={canEditTraining} />}
-      {tab === 'grading'      && <GradingTab  emps={filtered} canEditHr={canEditGrading} canViewHr={canViewHr} />}
-      {tab === 'admin'        && <AdminTab    emps={filtered} canEditHr={canEditHr} />}
+      {tab === 'recruitment'   && <RecruitmentTab />}
+      {tab === 'training'      && <TrainingTab emps={filtered} canEditHr={canEditTraining} />}
+      {tab === 'grading'       && <GradingTab  emps={filtered} canEditHr={canEditGrading} canViewHr={canViewHr} />}
+      {tab === 'correspondent' && <CorrespondentTab />}
+      {tab === 'admin'         && <AdminTab    emps={filtered} canEditHr={canEditHr} />}
 
       {editing && <EmployeeModal emp={editing} onClose={() => setEditing(null)} onSave={save} />}
     </div>
@@ -209,7 +215,7 @@ function OverviewTab({ emps, filtered, rets, loading, ageBuckets, deptBuckets,
 
   const [search, setSearch] = useState('');
 
-  // Only working employees â€” global state/branch already applied via `filtered` prop
+  // Only working employees - global state/branch already applied via `filtered` prop
   const tableRows = useMemo(() => {
     return filtered.filter(e => {
       const working = e.Status === 'Working' || e.is_emp_working == 1 || e.Status === 'Active';
@@ -246,7 +252,7 @@ function OverviewTab({ emps, filtered, rets, loading, ageBuckets, deptBuckets,
               <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12 }} />
               <Bar dataKey="count" radius={[6, 6, 0, 0]}>
                 {ageBuckets.map((b, i) => (
-                  <Cell key={i} fill={b.range === '60+' || b.range === '50â€“59' ? '#d71920' : '#C9A227'} />
+                  <Cell key={i} fill={b.range === '60+' || b.range === '50-59' ? '#d71920' : '#C9A227'} />
                 ))}
               </Bar>
             </BarChart>
@@ -286,7 +292,7 @@ function OverviewTab({ emps, filtered, rets, loading, ageBuckets, deptBuckets,
       )}
 
       <SectionCard
-        title={`Employees â€” Working (${tableRows.length})`}
+        title={`Employees - Working (${tableRows.length})`}
         action={
           <button onClick={onDownload} className="btn-ghost flex items-center gap-1.5 text-sm">
             <Download size={14} /> Excel
@@ -297,7 +303,7 @@ function OverviewTab({ emps, filtered, rets, loading, ageBuckets, deptBuckets,
         <div className="flex flex-wrap gap-2 mb-3">
           <input
             type="text"
-            placeholder="Search name, PAN, deptâ€¦"
+            placeholder="Search name, PAN, dept..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="input py-1.5 text-sm flex-1 min-w-[160px]"
@@ -315,7 +321,7 @@ function OverviewTab({ emps, filtered, rets, loading, ageBuckets, deptBuckets,
         <div className="overflow-x-auto">
           {loading ? (
             <div className="flex items-center justify-center py-8 gap-2" style={{ color: 'var(--muted)' }}>
-              <Loader2 size={16} className="animate-spin" /> Loading employeesâ€¦
+              <Loader2 size={16} className="animate-spin" /> Loading employees...
             </div>
           ) : (
             <table className="w-full text-sm">
@@ -338,15 +344,15 @@ function OverviewTab({ emps, filtered, rets, loading, ageBuckets, deptBuckets,
                   const age = calcAge(e.DOB);
                   return (
                     <tr key={e.EMP_CODE} className="border-t hover:bg-black/5 dark:hover:bg-white/5 transition" style={{ borderColor: 'var(--border)' }}>
-                      <td className="p-2 font-mono text-xs font-semibold">{e.pan_no || 'â€”'}</td>
+                      <td className="p-2 font-mono text-xs font-semibold">{e.pan_no || '-'}</td>
                       <td className="p-2 font-semibold whitespace-nowrap">{e.EMPNAME}</td>
-                      <td className="p-2">{e.Story_Type || 'â€”'}</td>
+                      <td className="p-2">{e.Story_Type || '-'}</td>
                       <td className="p-2">{e.emp_deptt}</td>
                       <td className="p-2">{e.Branch}</td>
                       <td className="p-2">{e.State}</td>
                       <td className="p-2">
                         <span style={{ color: age >= 58 ? '#d71920' : 'inherit', fontWeight: age >= 58 ? 700 : 400 }}>
-                          {age ?? 'â€”'}
+                          {age ?? '-'}
                         </span>
                       </td>
                     </tr>
@@ -528,7 +534,7 @@ function RecruitmentTab() {
       {/* â”€â”€ CV Upload Section â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {canEditHr() && (
         <SectionCard className="mb-4"
-          title={extracted.length ? `CV Review â€” ${extracted.length} file${extracted.length > 1 ? 's' : ''} parsed` : 'Upload CVs'}
+          title={extracted.length ? `CV Review - ${extracted.length} file${extracted.length > 1 ? 's' : ''} parsed` : 'Upload CVs'}
         >
           {/* Drop zone / upload trigger */}
           {!extracted.length && (
@@ -540,12 +546,12 @@ function RecruitmentTab() {
               <div className="text-center">
                 <p className="font-semibold text-sm">Click to upload CVs</p>
                 <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>
-                  PDF, DOCX, DOC, TXT, RTF â€” single or multiple files
+                  PDF, DOCX, DOC, TXT, RTF - single or multiple files
                 </p>
               </div>
               {uploading && (
                 <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--brand)' }}>
-                  <Loader2 size={16} className="animate-spin" /> Parsing filesâ€¦
+                  <Loader2 size={16} className="animate-spin" /> Parsing files...
                 </div>
               )}
               <input
@@ -603,7 +609,7 @@ function RecruitmentTab() {
                                 onChange={e => setExtField(idx, f.key, e.target.value)}
                                 disabled={row._saved}
                               >
-                                {f.options.map(o => <option key={o} value={o}>{o || 'â€”'}</option>)}
+                                {f.options.map(o => <option key={o} value={o}>{o || '-'}</option>)}
                               </select>
                             ) : (
                               <input
@@ -612,7 +618,7 @@ function RecruitmentTab() {
                                 value={row[f.key] || ''}
                                 onChange={e => setExtField(idx, f.key, e.target.value)}
                                 disabled={row._saved}
-                                placeholder="â€”"
+                                placeholder="-"
                               />
                             )}
                           </td>
@@ -703,7 +709,7 @@ function RecruitmentTab() {
       >
         {loading ? (
           <div className="flex items-center justify-center py-8 gap-2" style={{ color: 'var(--muted)' }}>
-            <Loader2 size={16} className="animate-spin" /> Loadingâ€¦
+            <Loader2 size={16} className="animate-spin" /> Loading...
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -753,13 +759,13 @@ function RecruitmentTab() {
                           {c.status !== 'eligible' && (
                             <button onClick={() => setStatus(c.id, 'eligible')} disabled={saving === c.id}
                               className="text-xs px-2 py-0.5 rounded font-medium" style={{ background: '#10b98120', color: '#10b981' }}>
-                              {saving === c.id ? 'â€¦' : 'Eligible'}
+                              {saving === c.id ? '...' : 'Eligible'}
                             </button>
                           )}
                           {c.status !== 'not_eligible' && (
                             <button onClick={() => setStatus(c.id, 'not_eligible')} disabled={saving === c.id}
                               className="text-xs px-2 py-0.5 rounded font-medium" style={{ background: '#d7192020', color: '#d71920' }}>
-                              {saving === c.id ? 'â€¦' : 'Reject'}
+                              {saving === c.id ? '...' : 'Reject'}
                             </button>
                           )}
                           <button onClick={() => deleteRow(c.id)} className="text-xs hover:opacity-70" style={{ color: 'var(--muted)' }}>
@@ -807,7 +813,7 @@ function CandidateModal({ onClose, onSave }) {
               <label className="label mb-1">{f.label}{f.required && ' *'}</label>
               {f.type === 'select' ? (
                 <select className="input w-full" value={form[f.key] || ''} onChange={e => set(f.key, e.target.value)}>
-                  <option value="">Selectâ€¦</option>
+                  <option value="">Select...</option>
                   {f.options.map(o => <option key={o} value={o}>{o}</option>)}
                 </select>
               ) : (
@@ -819,7 +825,7 @@ function CandidateModal({ onClose, onSave }) {
         <div className="mt-5 flex justify-end gap-2">
           <button className="btn-ghost" onClick={onClose} disabled={saving}>Cancel</button>
           <button className="btn-primary flex items-center gap-1.5" onClick={handleSave} disabled={saving}>
-            {saving ? <><Loader2 size={14} className="animate-spin" /> Savingâ€¦</> : <><Save size={14} /> Save</>}
+            {saving ? <><Loader2 size={14} className="animate-spin" /> Saving...</> : <><Save size={14} /> Save</>}
           </button>
         </div>
       </div>
@@ -922,12 +928,12 @@ function TrainingTab({ emps, canEditHr }) {
         <Tile icon={Clock}        label="Trainings Pending"    value={summary.required}  color="#C9A227" />
       </div>
 
-      <SectionCard title={`Training Status â€” Active (${displayEmps.length})`}>
+      <SectionCard title={`Training Status - Active (${displayEmps.length})`}>
         {/* â”€â”€ One-line filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         <div className="flex flex-wrap gap-2 mb-3">
           <select value={filterType} onChange={e => setFilterType(e.target.value)} className="input py-1.5 text-sm">
             <option value="all">All Types</option>
-            {TRAINING_TYPES.map(t => <option key={t} value={t}>{t} â€” Pending</option>)}
+            {TRAINING_TYPES.map(t => <option key={t} value={t}>{t} - Pending</option>)}
           </select>
           {filterType !== 'all' && (
             <button onClick={() => setFilterType('all')} className="btn-ghost py-1.5 text-sm">
@@ -941,7 +947,7 @@ function TrainingTab({ emps, canEditHr }) {
 
         {loading ? (
           <div className="flex items-center justify-center py-8 gap-2" style={{ color: 'var(--muted)' }}>
-            <Loader2 size={16} className="animate-spin" /> Loadingâ€¦
+            <Loader2 size={16} className="animate-spin" /> Loading...
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -961,7 +967,7 @@ function TrainingTab({ emps, canEditHr }) {
                 )}
                 {displayEmps.map(e => (
                   <tr key={e.EMP_CODE} className="border-t hover:bg-black/5 dark:hover:bg-white/5 transition" style={{ borderColor: 'var(--border)' }}>
-                    <td className="p-2 font-mono text-xs font-semibold">{e.pan_no || 'â€”'}</td>
+                    <td className="p-2 font-mono text-xs font-semibold">{e.pan_no || '-'}</td>
                     <td className="p-2 font-semibold whitespace-nowrap">{e.EMPNAME}</td>
                     <td className="p-2">{e.State}</td>
                     <td className="p-2">{e.Branch}</td>
@@ -1022,7 +1028,7 @@ function MarkTrainingModal({ emp, type, saving, onClose, onSave }) {
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="card relative z-10 w-full max-w-md p-5">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-bold">{type} Training â€” {emp.EMPNAME}</h3>
+          <h3 className="text-lg font-bold">{type} Training - {emp.EMPNAME}</h3>
           <button onClick={onClose} className="rounded-lg p-1 hover:bg-black/10"><X size={20} /></button>
         </div>
         <div className="space-y-3">
@@ -1049,7 +1055,7 @@ function MarkTrainingModal({ emp, type, saving, onClose, onSave }) {
         <div className="mt-5 flex justify-end gap-2">
           <button className="btn-ghost" onClick={onClose} disabled={saving}>Cancel</button>
           <button className="btn-primary flex items-center gap-1.5" onClick={() => onSave(emp.EMP_CODE, emp.EMPNAME, type, name, status, date)} disabled={saving}>
-            {saving ? <><Loader2 size={14} className="animate-spin" /> Savingâ€¦</> : <><Save size={14} /> Save</>}
+            {saving ? <><Loader2 size={14} className="animate-spin" /> Saving...</> : <><Save size={14} /> Save</>}
           </button>
         </div>
       </div>
@@ -1069,7 +1075,7 @@ const GRADE_CRITERIA = [
 
 // Compute overall % from four 0-5 scores
 function calcOverallPct(grades) {
-  // Filter out null / undefined / '' BEFORE Number() â€” Number(null)=0 and Number('')=0 would corrupt the result
+  // Filter out null / undefined / '' BEFORE Number() - Number(null)=0 and Number('')=0 would corrupt the result
   const vals = GRADE_CRITERIA
     .map(c => grades[c.key])
     .filter(v => v !== null && v !== undefined && v !== '')
@@ -1077,7 +1083,7 @@ function calcOverallPct(grades) {
     .filter(v => !isNaN(v) && v >= 0 && v <= 5);
   if (!vals.length) return null;
   const sum = vals.reduce((a, v) => a + v, 0);
-  // Always out of 20 (4 criteria Ã— 5 max) â€” unfilled = 0 contribution
+  // Always out of 20 (4 criteria x 5 max) - unfilled = 0 contribution
   return Math.round((sum / 20) * 100);
 }
 
@@ -1122,9 +1128,9 @@ function GradingTab({ emps, canEditHr, canViewHr }) {
 
   const saveRow = async (emp) => {
     const pan = emp.pan_no || emp.PAN;
-    if (!pan) return alert('Employee has no PAN number â€” cannot save grading.');
+    if (!pan) return alert('Employee has no PAN number - cannot save grading.');
     const grades = localGrades[pan] || {};
-    // Validate: each score must be 0â€“5
+    // Validate: each score must be 0-5
     for (const c of GRADE_CRITERIA) {
       const v = grades[c.key];
       if (v !== '' && v !== undefined && v !== null) {
@@ -1192,12 +1198,12 @@ function GradingTab({ emps, canEditHr, canViewHr }) {
         </div>
 
         <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
-          Score each employee 0â€“5 per criterion (5 = Excellent, 0 = Poor). Overall % = total scored Ã· 20 Ã— 100. PAN is the unique key.
+          Score each employee 0-5 per criterion (5 = Excellent, 0 = Poor). Overall % = total scored / 20 x 100. PAN is the unique key.
         </p>
 
         {loading ? (
           <div className="flex items-center justify-center py-8 gap-2" style={{ color: 'var(--muted)' }}>
-            <Loader2 size={16} className="animate-spin" /> Loadingâ€¦
+            <Loader2 size={16} className="animate-spin" /> Loading...
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -1209,7 +1215,7 @@ function GradingTab({ emps, canEditHr, canViewHr }) {
                   <th className="p-2">Story Type</th>
                   <th className="p-2">State</th>
                   <th className="p-2">Branch</th>
-                  {GRADE_CRITERIA.map(c => <th key={c.key} className="p-2 text-center">{c.label}<span className="block text-[10px] font-normal opacity-60">0â€“5</span></th>)}
+                  {GRADE_CRITERIA.map(c => <th key={c.key} className="p-2 text-center">{c.label}<span className="block text-[10px] font-normal opacity-60">0-5</span></th>)}
                   <th className="p-2 text-center">Overall<span className="block text-[10px] font-normal opacity-60">%</span></th>
                   {canEditHr() && <th className="p-2" />}
                 </tr>
@@ -1234,11 +1240,11 @@ function GradingTab({ emps, canEditHr, canViewHr }) {
 
                   return (
                     <tr key={e.EMP_CODE} className="border-t hover:bg-black/5 dark:hover:bg-white/5 transition" style={{ borderColor: 'var(--border)' }}>
-                      <td className="p-2 font-mono text-xs font-semibold">{pan || 'â€”'}</td>
+                      <td className="p-2 font-mono text-xs font-semibold">{pan || '-'}</td>
                       <td className="p-2 font-semibold whitespace-nowrap">{e.EMPNAME}</td>
-                      <td className="p-2 text-xs">{e.Story_Type || 'â€”'}</td>
-                      <td className="p-2">{e.State || 'â€”'}</td>
-                      <td className="p-2">{e.Branch || 'â€”'}</td>
+                      <td className="p-2 text-xs">{e.Story_Type || '-'}</td>
+                      <td className="p-2">{e.State || '-'}</td>
+                      <td className="p-2">{e.Branch || '-'}</td>
                       {GRADE_CRITERIA.map(c => {
                         const curVal = lg[c.key] !== undefined ? lg[c.key] : (saved?.[c.key] ?? '');
                         return (
@@ -1256,11 +1262,11 @@ function GradingTab({ emps, canEditHr, canViewHr }) {
                                 }}
                                 style={{ color: scoreColor(curVal), fontWeight: 700 }}
                                 disabled={!pan}
-                                placeholder="â€”"
+                                placeholder="-"
                               />
                             ) : (
                               <span className="font-bold text-sm" style={{ color: scoreColor(curVal) }}>
-                                {curVal !== '' && curVal !== null && curVal !== undefined ? curVal : 'â€”'}
+                                {curVal !== '' && curVal !== null && curVal !== undefined ? curVal : '-'}
                               </span>
                             )}
                           </td>
@@ -1272,7 +1278,7 @@ function GradingTab({ emps, canEditHr, canViewHr }) {
                               style={{ background: overallPct >= 80 ? '#10b981' : overallPct >= 60 ? '#C9A227' : '#d71920' }}>
                               {overallPct}%
                             </span>
-                          : <span className="text-xs" style={{ color: 'var(--muted)' }}>â€”</span>
+                          : <span className="text-xs" style={{ color: 'var(--muted)' }}>-</span>
                         }
                       </td>
                       {canEditHr() && (
@@ -1304,11 +1310,21 @@ function GradingTab({ emps, canEditHr, canViewHr }) {
 }
 
 function GradeBadge({ grade }) {
-  if (!grade) return <span style={{ color: 'var(--muted)' }}>â€”</span>;
+  if (!grade) return <span style={{ color: 'var(--muted)' }}>-</span>;
   return (
     <span className="inline-block w-7 h-7 rounded-full text-sm font-bold leading-7 text-center text-white" style={{ background: GRADE_COLOR[grade] || '#888' }}>
       {grade}
     </span>
+  );
+}
+
+function CorrespondentTab() {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-center" style={{ color: 'var(--text-secondary)' }}>
+      <Newspaper size={48} className="mb-4 opacity-40" />
+      <p className="text-lg font-medium">Correspondent</p>
+      <p className="text-sm mt-1 opacity-60">Content coming soon</p>
+    </div>
   );
 }
 
@@ -1347,7 +1363,7 @@ function AdminTab({ emps, canEditHr }) {
       'Available (Working)':   p.available,
       'Sanctioned':            p.sanctionedCount ?? 'Not Set',
       'Vacant':                p.vacant ?? 'N/A',
-      'Avg Salary':            p.avgSalary ? `â‚¹${p.avgSalary.toLocaleString('en-IN')}` : '',
+      'Avg Salary':            p.avgSalary ? `₹${p.avgSalary.toLocaleString('en-IN')}` : '',
     }));
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
@@ -1358,7 +1374,7 @@ function AdminTab({ emps, canEditHr }) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16 gap-2" style={{ color: 'var(--muted)' }}>
-        <Loader2 size={20} className="animate-spin" /> Loading admin statsâ€¦
+        <Loader2 size={20} className="animate-spin" /> Loading admin stats...
       </div>
     );
   }
@@ -1370,8 +1386,8 @@ function AdminTab({ emps, canEditHr }) {
       {/* Retirement Overview */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <RetTile label="Retiring This Year"  count={(ret.overdue?.length || 0) + (ret.within1yr?.length || 0)} color="#d71920" />
-        <RetTile label="Retiring in 1â€“3 yrs" count={ret.yr1to3?.length || 0}   color="#f97316" />
-        <RetTile label="Retiring in 3â€“5 yrs" count={ret.yr3to5?.length || 0}   color="#C9A227" />
+        <RetTile label="Retiring in 1-3 yrs" count={ret.yr1to3?.length || 0}   color="#f97316" />
+        <RetTile label="Retiring in 3-5 yrs" count={ret.yr3to5?.length || 0}   color="#C9A227" />
         <RetTile label="Left / Inactive"      count={stats?.totalInactive || inactive.length} color="#6b7280" />
       </div>
 
@@ -1412,7 +1428,7 @@ function AdminTab({ emps, canEditHr }) {
 
       {/* Profile-wise Sanction vs Available */}
       <SectionCard
-        title="Story Typeâ€“wise: Sanctioned vs Available (Active Members)"
+        title="Story Type-wise: Sanctioned vs Available (Active Members)"
         action={
           <div className="flex items-center gap-2">
             <button onClick={downloadProfiles} className="btn-ghost flex items-center gap-1.5 text-sm">
@@ -1450,7 +1466,7 @@ function AdminTab({ emps, canEditHr }) {
                         {p.sanctionedCount != null ? p.sanctionedCount : 'Set â†’'}
                       </button>
                     ) : (
-                      p.sanctionedCount ?? 'â€”'
+                      p.sanctionedCount ?? '-'
                     )}
                   </td>
                   <td className="p-2 text-right">
@@ -1458,10 +1474,10 @@ function AdminTab({ emps, canEditHr }) {
                       <span style={{ color: p.vacant > 0 ? '#d71920' : '#10b981', fontWeight: 600 }}>
                         {p.vacant > 0 ? p.vacant : 'âœ“ Full'}
                       </span>
-                    ) : 'â€”'}
+                    ) : '-'}
                   </td>
                   <td className="p-2 text-right">
-                    {p.avgSalary ? `â‚¹${p.avgSalary.toLocaleString('en-IN')}` : 'â€”'}
+                    {p.avgSalary ? `₹${p.avgSalary.toLocaleString('en-IN')}` : '-'}
                   </td>
                 </tr>
               ))}
@@ -1492,7 +1508,7 @@ function AdminTab({ emps, canEditHr }) {
                 <tr key={e.EMP_CODE} className="border-t hover:bg-black/5 dark:hover:bg-white/5 transition" style={{ borderColor: 'var(--border)' }}>
                   <td className="p-2 font-mono text-xs">{e.EMP_CODE}</td>
                   <td className="p-2 font-semibold">{e.EMPNAME}</td>
-                  <td className="p-2">{e.Story_Type || e.emp_designation || 'â€”'}</td>
+                  <td className="p-2">{e.Story_Type || e.emp_designation || '-'}</td>
                   <td className="p-2">{e.emp_deptt}</td>
                   <td className="p-2">{e.Branch}</td>
                   <td className="p-2">{e.DOJ}</td>
@@ -1522,7 +1538,7 @@ function AdminTab({ emps, canEditHr }) {
             <div className="mt-4 flex justify-end gap-2">
               <button className="btn-ghost" onClick={() => setSanctionEdit(null)} disabled={saving}>Cancel</button>
               <button className="btn-primary flex items-center gap-1.5" onClick={saveSanction} disabled={saving}>
-                {saving ? <><Loader2 size={14} className="animate-spin" /> Savingâ€¦</> : <><Save size={14} /> Save</>}
+                {saving ? <><Loader2 size={14} className="animate-spin" /> Saving...</> : <><Save size={14} /> Save</>}
               </button>
             </div>
           </div>
@@ -1592,7 +1608,7 @@ function EmployeeModal({ emp, onClose, onSave }) {
         <div className="mt-5 flex justify-end gap-2">
           <button className="btn-ghost" onClick={onClose} disabled={saving}>Cancel</button>
           <button className="btn-primary flex items-center gap-1.5" onClick={handleSave} disabled={saving}>
-            {saving ? <><Loader2 size={14} className="animate-spin" /> Savingâ€¦</> : <><Save size={14} /> Save</>}
+            {saving ? <><Loader2 size={14} className="animate-spin" /> Saving...</> : <><Save size={14} /> Save</>}
           </button>
         </div>
       </div>

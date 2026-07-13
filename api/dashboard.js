@@ -57,7 +57,7 @@ module.exports = async function handler(req, res) {
     // ── Resolve effective state/branch ────────────────────────────────────────
     let state  = req.query.state  || '';
     let branch = req.query.branch || '';
-    if (user.role === 'State Head'      && user.state)  { state = user.state; branch = ''; }
+    if (user.role === 'State Head'      && user.state)  { state = user.state; }  // branch stays as selected
     if (user.role === 'Regional Editor') {
       if (user.state)  state  = user.state;
       if (user.branch) branch = user.branch;

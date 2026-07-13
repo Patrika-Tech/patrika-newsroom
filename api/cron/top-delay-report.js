@@ -16,6 +16,80 @@ const { sendMessage } = require('../_lib/telegram');
 const RECIPIENT_PAN = 'AFZPJ6299J';
 const TOP_N         = 10;
 
+// ── Fetch RE/Desk Head recipients for a branch ────────────────────────────────
+async function getRecipients(branch) {
+  return query(
+    `SELECT EMPNAME, Story_Type, Branch, State, telegram_chat_id
+     FROM \`user\`
+     WHERE Branch = ?
+       AND telegram_chat_id IS NOT NULL AND telegram_chat_id != ''
+       AND (is_emp_working = 1 OR Status IN ('Working','Active'))
+       AND Story_Type IN ('Desk Head', 'RE')`,
+    [branch]
+  ).catch(() => []);
+}
+
+// ── Build per-RE alert message (delay + reason request) ───────────────────────
+function buildREAlertMessage(branch, state, editions, date) {
+  const dateLabel = new Date(date).toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric',
+  });
+  const lines = [
+    `⚠️ <b>Delay Alert — ${branch}</b>`,
+    `📅 ${dateLabel} | State: ${state || branch}`,
+    '',
+    `<b>Your delayed edition(s):</b>`,
+  ];
+  editions.forEach(e => {
+    const sched    = (e.schedule_time || '').slice(0, 5);
+    const released = fmtTime(e.release_time);
+    lines.push(`📰 <b>${e.edition_name}</b>`);
+    lines.push(`   Sched: ${sched} → Released: ${released} | Delay: <b>${e.delay_hhmm}</b>`);
+  });
+  lines.push('');
+  lines.push(`📝 <b>Please submit your delay reason by 9:00 AM today:</b>`);
+  lines.push(`Reply with: <code>REASON ${date} your reason here</code>`);
+  lines.push(`Example: <code>REASON ${date} Power outage at press</code>`);
+  lines.push('');
+  lines.push(`<i>— Patrika Newsroom · Auto Alert</i>`);
+  return lines.join('\n');
+}
+
+// ── Alert branch REs for top-10 delayed editions ──────────────────────────────
+async function alertBranchREs(top, date) {
+  // Group top editions by branch/unit
+  const byBranch = {};
+  for (const e of top) {
+    const key = e.unit || e.state || 'Unknown';
+    if (!byBranch[key]) byBranch[key] = { unit: e.unit, state: e.state, editions: [] };
+    byBranch[key].editions.push(e);
+  }
+
+  const results = { sent: [], failed: [], noRecipients: [] };
+
+  for (const { unit, state, editions } of Object.values(byBranch)) {
+    if (!unit) continue;
+    const recipients = await getRecipients(unit);
+    if (!recipients.length) {
+      results.noRecipients.push(unit);
+      continue;
+    }
+    const text = buildREAlertMessage(unit, state, editions, date);
+    for (const person of recipients) {
+      try {
+        await sendMessage(person.telegram_chat_id, text);
+        results.sent.push({ branch: unit, name: person.EMPNAME });
+        console.log(`[top-delay-report] RE alert sent to ${person.EMPNAME} (${unit})`);
+      } catch (err) {
+        results.failed.push({ branch: unit, name: person.EMPNAME, error: err.message });
+        console.error(`[top-delay-report] RE alert failed for ${person.EMPNAME} (${unit}): ${err.message}`);
+      }
+    }
+  }
+
+  return results;
+}
+
 // ── Helpers (mirror api/production.js logic) ──────────────────────────────────
 
 // Hard cutoff: exclude uploads after 2:30 AM on pub_date.
@@ -223,7 +297,19 @@ async function run(triggeredBy = 'cron', dateOverride = null) {
     [date, recipient.telegram_chat_id, recipient.EMPNAME, status, errorMsg, triggeredBy, text]
   ).catch(() => {});
 
-  return { sent: status === 'sent' ? 1 : 0, failed: status === 'failed' ? 1 : 0, skipped: false, top, total };
+  // Alert concerned REs per branch asking for reason by 9 AM
+  const reResults = await alertBranchREs(top, date).catch(err => {
+    console.error('[top-delay-report] RE alert error:', err.message);
+    return { sent: [], failed: [], noRecipients: [] };
+  });
+
+  return {
+    sent: status === 'sent' ? 1 : 0,
+    failed: status === 'failed' ? 1 : 0,
+    skipped: false,
+    top, total,
+    reAlerts: reResults,
+  };
 }
 
 // ── Register cron ─────────────────────────────────────────────────────────────

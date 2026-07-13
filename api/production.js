@@ -164,7 +164,8 @@ module.exports = async function handler(req, res) {
       // ── Role-based scope: normalise 'Rajasthan'→'raj' etc. before comparing ──
       .filter(e => {
         if (user.role === 'State Head' && user.state) {
-          return normState(e.state) === normState(user.state);
+          if (normState(e.state) !== normState(user.state)) return false;
+          // fall through so qBranch filter below is also applied
         }
         if (user.role === 'Regional Editor') {
           if (user.state  && normState(e.state) !== normState(user.state))             return false;

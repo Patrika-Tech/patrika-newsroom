@@ -88,7 +88,7 @@ module.exports = async function handler(req, res) {
     // Role lock
     let fState  = state  || '';
     let fBranch = branch || '';
-    if (user.role === 'State Head'      && user.state)  { fState = user.state; fBranch = ''; }
+    if (user.role === 'State Head'      && user.state)  { fState = user.state; }  // fBranch stays as selected
     if (user.role === 'Regional Editor' && user.state)  fState  = user.state;
     if (user.role === 'Regional Editor' && user.branch) fBranch = user.branch;
     if (fState  === 'All') fState  = '';

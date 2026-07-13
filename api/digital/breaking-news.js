@@ -278,6 +278,21 @@ module.exports = async function handler(req, res) {
         where.push(`(bn.digital_user_id IN (${ids.map(() => '?').join(',')}) OR bn.editor_name IN (${names.map(() => '?').join(',')}))`);
         params.push(...ids, ...names);
       }
+    } else if (['State Head', 'Regional Editor'].includes(user.role)) {
+      // Filter by branch (location) first, fall back to state
+      if (user.branch) {
+        where.push(`(
+          bn.digital_user_id IN (SELECT id FROM digital_user WHERE location = ?)
+          OR (bn.digital_user_id IS NULL AND bn.editor_name IN (SELECT name FROM digital_user WHERE location = ?))
+        )`);
+        params.push(user.branch, user.branch);
+      } else if (user.state) {
+        where.push(`(
+          bn.digital_user_id IN (SELECT id FROM digital_user WHERE state = ?)
+          OR (bn.digital_user_id IS NULL AND bn.editor_name IN (SELECT name FROM digital_user WHERE state = ?))
+        )`);
+        params.push(user.state, user.state);
+      }
     }
 
     if (req.query.date) {

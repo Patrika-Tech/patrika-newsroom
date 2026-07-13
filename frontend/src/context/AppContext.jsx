@@ -135,10 +135,15 @@ export function AppProvider({ children }) {
   const isDigitalAdmin = () => isDigitalUser() && user?.digital_role === 'digital_admin';
   const isTeamLead     = () => isDigitalUser() && user?.digital_role === 'team_lead';
 
+  const isRajasthan = () => (user?.state || '').toLowerCase() === 'rajasthan';
   const canAccess    = (key) => {
     if (!user) return false;
     // Admin newsroom users can also see digital_tracker
     if (user.role === 'Admin') return true;
+    // Correspondent is Rajasthan-only (State Head + Regional Editor)
+    if (key === 'correspondent') {
+      return ['State Head', 'Regional Editor'].includes(user.role) && isRajasthan();
+    }
     const a = ACCESS[user.role] || [];
     return a === 'all' || a.includes(key);
   };

@@ -186,9 +186,8 @@ function buildMessage(branch, state, editions, reportDate) {
   lines.push('');
   lines.push(`<i>Auto Report · Patrika Newsroom · 8:00 AM</i>`);
   lines.push('');
-  lines.push(`📝 <b>Submit Delay Reason:</b>`);
-  lines.push(`Reply to this bot with your reason:`);
-  lines.push(`<code>REASON ${reportDate} your reason here</code>`);
+  lines.push(`📝 <b>Please submit your delay reason by 9:00 AM today:</b>`);
+  lines.push(`Reply with: <code>REASON ${reportDate} your reason here</code>`);
   lines.push(`Example: <code>REASON ${reportDate} Power outage at press</code>`);
 
   return lines.join('\n');

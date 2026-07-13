@@ -50,9 +50,90 @@ correspondentPaymentAlert.register();
 const homeOfficeVisitAlert = require('./api/cron/home-office-visit-alert');
 homeOfficeVisitAlert.register();
 
-// ── Cron: 8 AM IST Mon–Sat — top-10 delay edition report to AFZPJ6299J ────────
+// ── Cron: 8 AM IST Mon–Sat — top-10 delay edition report + RE branch alerts ───
 const topDelayReport = require('./api/cron/top-delay-report');
 topDelayReport.register();
+
+// ── Cron: 9 AM IST daily — delay+reason compiled report to CHFPK8050E ─────────
+const delayReasonReport = require('./api/cron/delay-reason-report');
+delayReasonReport.register();
+
+// ── Cron: Chartbeat daily snapshot — 11:55 PM IST (18:25 UTC) ────────────────
+(function registerChartbeatCron() {
+  const cron = require('node-cron');
+  const https = require('https');
+  const { query } = require('./api/_lib/mysql');
+  const API_KEY = 'ab404291a5510d9fc3666b0871c8fc39';
+  const HOST    = 'patrika.com';
+  const CB_BASE = 'https://api.chartbeat.com/query/v2/recurring';
+
+  function get(url) {
+    return new Promise((resolve, reject) => {
+      https.get(url, r => {
+        const c = []; r.on('data', d => c.push(d));
+        r.on('end', () => resolve(Buffer.concat(c).toString('utf8')));
+      }).on('error', reject);
+    });
+  }
+  function parseCsv(text) {
+    const rows = []; const lines = text.trim().split('\n');
+    if (lines.length < 2) return rows;
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim(); if (!line) continue;
+      const cells = []; let field = '', inQ = false;
+      for (let j = 0; j < line.length; j++) {
+        const c = line[j];
+        if (inQ) { if (c==='"') { if (line[j+1]==='"') { field+='"'; j++; } else inQ=false; } else field+=c; }
+        else if (c==='"') inQ=true; else if (c===',') { cells.push(field.trim()); field=''; } else field+=c;
+      }
+      cells.push(field.trim());
+      const obj = {}; headers.forEach((h,idx) => { obj[h]=cells[idx]||''; }); rows.push(obj);
+    }
+    return rows;
+  }
+  function todayIST() {
+    const ist = new Date(Date.now() + 5.5*60*60*1000);
+    return ist.toISOString().slice(0, 10);
+  }
+
+  async function snapshotToday() {
+    try {
+      const listBody = await get(`${CB_BASE}/list/?apikey=${API_KEY}&host=${HOST}`);
+      let queryIds = [];
+      try { queryIds = JSON.parse(listBody).queries.map(q=>q.query_id).filter(Boolean); } catch(_) { queryIds=['a0dc4f20-4467-4a5e-a29e-c3bd77beb360']; }
+      const authorMap = {};
+      await Promise.all(queryIds.map(async qid => {
+        try {
+          const body = await get(`${CB_BASE}/fetch/?apikey=${API_KEY}&host=${HOST}&query_id=${qid}`);
+          const rows = body.trim().startsWith('{') ? (JSON.parse(body).articles||[]) : parseCsv(body);
+          rows.forEach(r => {
+            const author = (r.author||'').trim();
+            if (!author || author.toLowerCase()==='undefined') return;
+            const key=author.toLowerCase(), uv=parseInt(r.page_uniques||0,10)||0, title=(r.title||'').trim();
+            if (!authorMap[key]) authorMap[key]={author,page_uniques:0,title:'',stories:0,_topUV:0};
+            authorMap[key].page_uniques+=uv; authorMap[key].stories++;
+            if (uv>authorMap[key]._topUV) { authorMap[key]._topUV=uv; authorMap[key].title=title; }
+          });
+        } catch(_) {}
+      }));
+      const articles = Object.values(authorMap);
+      if (!articles.length) return;
+      const date = todayIST();
+      await query('DELETE FROM chartbeat_author_daily WHERE stat_date=?', [date]);
+      const ph = articles.map(()=>'(?,?,?,?,?)').join(',');
+      const vals = articles.flatMap(a=>[date,a.author,a.stories,a.page_uniques,a.title||null]);
+      await query(`INSERT INTO chartbeat_author_daily (stat_date,author,stories,page_uniques,top_title) VALUES ${ph}`, vals);
+      console.log(`[chartbeat-cron] Saved ${articles.length} authors for ${date}`);
+    } catch(e) { console.error('[chartbeat-cron] snapshot failed:', e.message); }
+  }
+
+  // Run at 23:55 IST = 18:25 UTC every day
+  cron.schedule('25 18 * * *', snapshotToday, { timezone: 'UTC' });
+  // Also snapshot at server startup to seed today's data immediately
+  snapshotToday();
+  console.log('[chartbeat-cron] Registered — daily 11:55 PM IST');
+})();
 
 // ── Body parsing ──────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
@@ -97,6 +178,7 @@ app.all('/api/dashboard',             h('./api/dashboard'));
 app.all('/api/editorial/feeds',       h('./api/editorial/feeds'));   // must be before /api/editorial
 app.all('/api/editorial',             h('./api/editorial'));
 app.all('/api/production/top-delay-alert',      h('./api/cron/top-delay-report-api'));
+app.all('/api/production/delay-reason-report', h('./api/cron/delay-reason-report-api'));
 app.all('/api/production/delay-report',        h('./api/production/delay-report'));
 app.all('/api/production/weekly-appreciation', h('./api/production/weekly-appreciation'));
 app.all('/api/production/delay-reasons', h('./api/production/delay-reasons'));

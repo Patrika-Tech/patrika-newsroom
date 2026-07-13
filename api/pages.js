@@ -54,7 +54,7 @@ module.exports = async function handler(req, res) {
   let filterBranch = req.query.branch || '';
 
   // Role locks override query params — RE/State Head cannot widen beyond their scope
-  if (user.role === 'State Head' && user.state)  { filterState = user.state; filterBranch = ''; }
+  if (user.role === 'State Head' && user.state)  { filterState = user.state; }  // filterBranch stays as selected
   if (user.role === 'Regional Editor') {
     if (user.state)  filterState  = user.state;
     if (user.branch) filterBranch = user.branch;
