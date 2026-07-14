@@ -74,7 +74,8 @@ export default function Dashboard() {
   const [topDelay, setTopDelay] = useState([]);
   const [feeds, setFeeds]   = useState([]);
   const [profiles, setProfiles] = useState([]);
-  const [gradingTop, setGradingTop] = useState({ top3: [], worst3: [], month: '' });
+  const [gradingTop, setGradingTop]       = useState(null);
+  const [gradingTopLoading, setGTLoading] = useState(true);
 
   useEffect(() => {
     api.editorialFeeds().then(d => setFeeds(d.feeds || [])).catch(() => {});
@@ -87,9 +88,10 @@ export default function Dashboard() {
   }, [state, branch]);
 
   useEffect(() => {
+    setGTLoading(true);
     api.hrGradingTop(state, branch)
-      .then(r => setGradingTop(r || { top3: [], worst3: [], month: '' }))
-      .catch(() => {});
+      .then(r => { setGradingTop(r || { top3: [], worst3: [], month: '' }); setGTLoading(false); })
+      .catch(() => { setGradingTop({ top3: [], worst3: [], month: '' }); setGTLoading(false); });
   }, [state, branch]);
 
   useEffect(() => {
@@ -348,9 +350,11 @@ export default function Dashboard() {
       </div>
 
       {/* ── Top 3 / Worst 3 Employees — Previous Month ──────────────────────── */}
-      {(gradingTop.top3.length > 0 || gradingTop.worst3.length > 0) && (
-        <div className="mt-4">
-          <SectionCard title={`Employee Performance — ${gradingTop.month ? new Date(gradingTop.month + '-01').toLocaleString('en-IN', { month: 'long', year: 'numeric' }) : 'Previous Month'} (PLI & Grading)`}>
+      <div className="mt-4">
+          <SectionCard title={`Employee Performance — ${gradingTop?.month ? new Date(gradingTop.month + '-01').toLocaleString('en-IN', { month: 'long', year: 'numeric' }) : 'Previous Month'} (PLI & Grading)`}>
+            {gradingTopLoading ? (
+              <p className="py-8 text-center text-sm" style={{ color: 'var(--muted)' }}>Loading…</p>
+            ) : (
             <div className="grid gap-4 sm:grid-cols-2">
 
               {/* Top 3 */}
@@ -359,8 +363,8 @@ export default function Dashboard() {
                   <span className="text-base">🏆</span>
                   <span className="font-semibold text-sm" style={{ color: '#16a34a' }}>Top Performers</span>
                 </div>
-                {gradingTop.top3.length === 0 ? (
-                  <p className="text-xs" style={{ color: 'var(--muted)' }}>No data available</p>
+                {!gradingTop?.top3?.length ? (
+                  <p className="text-xs" style={{ color: 'var(--muted)' }}>No grading data for previous month</p>
                 ) : (
                   <div className="flex flex-col gap-2">
                     {gradingTop.top3.map((emp, i) => {
@@ -400,8 +404,8 @@ export default function Dashboard() {
                   <span className="text-base">⚠️</span>
                   <span className="font-semibold text-sm" style={{ color: '#dc2626' }}>Need Improvement</span>
                 </div>
-                {gradingTop.worst3.length === 0 ? (
-                  <p className="text-xs" style={{ color: 'var(--muted)' }}>No data available</p>
+                {!gradingTop?.worst3?.length ? (
+                  <p className="text-xs" style={{ color: 'var(--muted)' }}>No grading data for previous month</p>
                 ) : (
                   <div className="flex flex-col gap-2">
                     {gradingTop.worst3.map((emp, i) => {
@@ -434,9 +438,9 @@ export default function Dashboard() {
                 )}
               </div>
             </div>
+            )}
           </SectionCard>
         </div>
-      )}
 
       {/* ── Profile-wise: Sanctioned vs Available ───────────────────────────── */}
       <div className="mt-4">
