@@ -346,7 +346,7 @@ function OverviewTab({ emps, filtered, rets, loading, ageBuckets, deptBuckets,
                     <tr key={e.EMP_CODE} className="border-t hover:bg-black/5 dark:hover:bg-white/5 transition" style={{ borderColor: 'var(--border)' }}>
                       <td className="p-2 font-mono text-xs font-semibold">{e.pan_no || '-'}</td>
                       <td className="p-2 font-semibold whitespace-nowrap">{e.EMPNAME}</td>
-                      <td className="p-2">{e.Story_Type || '-'}</td>
+                      <td className="p-2">{e.Story_Type === 'NE' ? (e.profile || 'NE') : (e.Story_Type || '-')}</td>
                       <td className="p-2">{e.emp_deptt}</td>
                       <td className="p-2">{e.Branch}</td>
                       <td className="p-2">{e.State}</td>
@@ -1184,7 +1184,7 @@ function GradingTab({ emps, canEditHr, canViewHr }) {
       const a   = autoScores[(pan || '').toUpperCase()] || {};
       return {
         'PAN': pan, 'Name': e.EMPNAME,
-        'Story Type': e.Story_Type || '',
+        'Story Type': e.Story_Type === 'NE' ? (e.profile || 'NE') : (e.Story_Type || ''),
         'State': e.State || '', 'Branch': e.Branch || '', 'Month': month,
         'Work (0-5)':       lg.work_grade       ?? g.work_grade       ?? '',
         'Behaviour (0-5)':  lg.behaviour_grade  ?? g.behaviour_grade  ?? '',
@@ -1297,7 +1297,7 @@ function GradingTab({ emps, canEditHr, canViewHr }) {
                     <tr key={e.EMP_CODE} className="border-t hover:bg-black/5 dark:hover:bg-white/5 transition" style={{ borderColor: 'var(--border)' }}>
                       <td className="p-2 font-mono text-xs font-semibold">{pan || '-'}</td>
                       <td className="p-2 font-semibold whitespace-nowrap">{e.EMPNAME}</td>
-                      <td className="p-2 text-xs">{e.Story_Type || '-'}</td>
+                      <td className="p-2 text-xs">{e.Story_Type === 'NE' ? (e.profile || 'NE') : (e.Story_Type || '-')}</td>
                       <td className="p-2">{e.State || '-'}</td>
                       <td className="p-2">{e.Branch || '-'}</td>
                       {GRADE_CRITERIA.map(c => {
