@@ -378,18 +378,18 @@ export default function Dashboard() {
                             <div className="font-semibold text-sm truncate">{emp.name}</div>
                             <div className="text-xs truncate" style={{ color: 'var(--muted)' }}>
                               {emp.story_type} · {emp.branch}
-                              {emp.pli_percent != null ? ` · PLI ${emp.pli_percent}%` : ''}
+                              {emp.pli_amount != null && emp.pli_amount > 0 ? ` · PLI ₹${Number(emp.pli_amount).toLocaleString('en-IN')}` : ''}
                             </div>
                             <div className="mt-1 h-1.5 rounded-full" style={{ background: 'var(--border)' }}>
                               <div className="h-1.5 rounded-full transition-all"
-                                style={{ width: `${emp.combined_pct}%`, background: barColors[i] }} />
+                                style={{ width: `${emp.score_pct}%`, background: barColors[i] }} />
                             </div>
                           </div>
                           <div className="flex-shrink-0 text-right">
                             <div className="text-lg font-bold tabular-nums" style={{ color: barColors[i] }}>
-                              {emp.combined_pct}%
+                              {emp.score_pct}%
                             </div>
-                            <div className="text-xs" style={{ color: 'var(--muted)' }}>score</div>
+                            <div className="text-xs" style={{ color: 'var(--muted)' }}>grade</div>
                           </div>
                         </div>
                       );
@@ -418,18 +418,18 @@ export default function Dashboard() {
                             <div className="font-semibold text-sm truncate">{emp.name}</div>
                             <div className="text-xs truncate" style={{ color: 'var(--muted)' }}>
                               {emp.story_type} · {emp.branch}
-                              {emp.pli_percent != null ? ` · PLI ${emp.pli_percent}%` : ''}
+                              {emp.pli_amount != null && emp.pli_amount > 0 ? ` · PLI ₹${Number(emp.pli_amount).toLocaleString('en-IN')}` : ''}
                             </div>
                             <div className="mt-1 h-1.5 rounded-full" style={{ background: 'var(--border)' }}>
                               <div className="h-1.5 rounded-full transition-all"
-                                style={{ width: `${emp.combined_pct}%`, background: barColors[i] }} />
+                                style={{ width: `${emp.score_pct}%`, background: barColors[i] }} />
                             </div>
                           </div>
                           <div className="flex-shrink-0 text-right">
                             <div className="text-lg font-bold tabular-nums" style={{ color: barColors[i] }}>
-                              {emp.combined_pct}%
+                              {emp.score_pct}%
                             </div>
-                            <div className="text-xs" style={{ color: 'var(--muted)' }}>score</div>
+                            <div className="text-xs" style={{ color: 'var(--muted)' }}>grade</div>
                           </div>
                         </div>
                       );
