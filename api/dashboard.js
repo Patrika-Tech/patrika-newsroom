@@ -88,13 +88,15 @@ module.exports = async function handler(req, res) {
     if (filterState) {
       empWhere.push('State = ?');     empParams.push(filterState);
       legalWhere.push('state = ?');   legalParams.push(filterState);
-      qcWhere.push('state = ?');      qcParams.push(filterState);
+      // qc_review.state is always empty; filter via edition↔Branch subquery instead
+      qcWhere.push('edition IN (SELECT DISTINCT Branch FROM `user` WHERE State = ?)'); qcParams.push(filterState);
       ecmsWhere.push('Pan_no IN (SELECT pan_no FROM `user` WHERE State = ?)');  ecmsParams.push(filterState);
       visitWhere.push('pan_no IN (SELECT pan_no FROM `user` WHERE State = ?)'); visitParams.push(filterState);
     }
     if (filterBranch) {
       empWhere.push('Branch = ?');    empParams.push(filterBranch);
       legalWhere.push('branch = ?');  legalParams.push(filterBranch);
+      qcWhere.push('edition = ?');    qcParams.push(filterBranch);
       ecmsWhere.push('Pan_no IN (SELECT pan_no FROM `user` WHERE Branch = ?)');  ecmsParams.push(filterBranch);
       visitWhere.push('pan_no IN (SELECT pan_no FROM `user` WHERE Branch = ?)'); visitParams.push(filterBranch);
     }
@@ -138,10 +140,10 @@ module.exports = async function handler(req, res) {
              GROUP BY DATE_FORMAT(entrydate, '%Y-%m-%d') ORDER BY d ASC`,
              [trend7Str, ydayStr, ...ecmsParams]).catch(() => []),
 
-      // 5. QC mistakes yesterday
+      // 5. QC mistakes last 7 days
       query(`SELECT COUNT(*) AS checks, SUM(no_of_mistake) AS mistakes
-             FROM qc_review WHERE entrydate = ?${qcExtra}`,
-             [ydayStr, ...qcParams]).catch(() => [{}]),
+             FROM qc_review WHERE entrydate BETWEEN ? AND ?${qcExtra}`,
+             [trend7Str, ydayStr, ...qcParams]).catch(() => [{}]),
 
       // 6. QC 7-day trend
       query(`SELECT DATE_FORMAT(entrydate, '%Y-%m-%d') AS d, SUM(no_of_mistake) AS mistakes

@@ -168,7 +168,7 @@ export default function Dashboard() {
         <KPICard
           label="QC Mistakes"
           value={k.qcMistakes ?? '—'}
-          sub="yesterday"
+          sub="last 7 days"
           accent={k.qcMistakes > 0 ? '#d71920' : '#16a34a'}
           icon={AlertCircle}
         />
