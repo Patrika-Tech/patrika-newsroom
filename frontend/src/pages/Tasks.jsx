@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   ClipboardList, Plus, X, CheckCircle2, Clock, AlertCircle, Ban,
   ChevronDown, ChevronUp, Users, BarChart2, MessageSquare, Send,
@@ -11,8 +12,47 @@ import { PageHeader, SectionCard } from '../components/UI.jsx';
 const CATEGORIES = [
   'Page Planning', 'Story Assignment', 'Photo Coverage', 'Breaking News Follow-up',
   'Exclusive Story', 'Investigation / Khulasa', 'Interview Scheduling', 'Event Coverage',
-  'QC Review', 'Edition Deadline', 'Bureau Visit', 'Reporter Appraisal',
-  'Content Audit', 'Legal Follow-up', 'Special Edition', 'Advertisement Content', 'Other',
+  'Election Coverage', 'Festival / Special Page', 'Supplement / Pullout', 'Photo Essay',
+  'District / Rural Coverage', 'Circulation Drive', 'Reader Connect / Campaign',
+  'Stringer Management', 'QC Review', 'Edition Deadline', 'Bureau Visit',
+  'Reporter Appraisal', 'Content Audit', 'Legal Follow-up', 'Special Edition',
+  'Advertisement Content', 'Other',
+];
+
+// ── Ready-made newsroom task pack (one-click load into Task Bank) ─────────────
+const NEWSROOM_PACK = [
+  { title: 'Page-1 lead story follow-up with fresh angle',                     category: 'Breaking News Follow-up',    priority: 'high',
+    description: 'Yesterday\'s lead needs a Day-2 follow: reactions, official response, what-next angle. File by 4 PM for page planning.' },
+  { title: 'File 1 exclusive / khulasa this week',                             category: 'Investigation / Khulasa',    priority: 'high',
+    description: 'Work sources for one exclusive: RTI findings, civic failure, corruption angle, or human-impact investigation. Coordinate with desk before publishing.' },
+  { title: 'Advance planning: upcoming festival special page',                 category: 'Festival / Special Page',    priority: 'high',
+    description: 'Plan stories, photos and ads coordination for the upcoming festival. Submit page plan 3 days in advance to desk head.' },
+  { title: 'Election beat: candidate & booth-level ground report',             category: 'Election Coverage',          priority: 'high',
+    description: 'Ground report from constituency: voter mood, key issues, candidate movement. Include voices from at least 5 voters with names.' },
+  { title: 'Civic issues series: one hyperlocal problem story daily',          category: 'Reader Connect / Campaign',  priority: 'medium',
+    description: 'Daily hyperlocal story — roads, water, drainage, streetlights — with photo, official version, and follow-up tracker.' },
+  { title: 'District / rural belt coverage visit',                            category: 'District / Rural Coverage',  priority: 'medium',
+    description: 'Visit assigned rural belt: mandi rates, farmer issues, panchayat developments, school/hospital ground check. Minimum 2 stories from the visit.' },
+  { title: 'Photo essay: weekend visual feature',                             category: 'Photo Essay',                priority: 'medium',
+    description: 'Shoot a 5-6 photo essay on a local theme (market, heritage, seasonal change). Captions with names and context mandatory.' },
+  { title: 'Verify & activate silent stringers in your area',                 category: 'Stringer Management',        priority: 'medium',
+    description: 'Identify stringers who filed nothing this week. Call each, resolve blockers, assign one story each for tomorrow.' },
+  { title: 'QC correction: fix repeated mistakes flagged this week',          category: 'QC Review',                  priority: 'high',
+    description: 'Review this week\'s QC report for your pages. Brief the desk on repeated errors (spelling, captions, headline facts) and confirm corrections.' },
+  { title: 'Edition deadline audit: release all pages before schedule',       category: 'Edition Deadline',           priority: 'high',
+    description: 'Track tonight\'s page release times vs schedule. Identify the bottleneck page and fix the workflow. Target: zero delay.' },
+  { title: 'Interview: district official / newsmaker of the week',            category: 'Interview Scheduling',       priority: 'medium',
+    description: 'Schedule and conduct one Q&A with a relevant official or newsmaker. Push for news-making quotes, not routine statements.' },
+  { title: 'Supplement / pullout content plan for next week',                 category: 'Supplement / Pullout',       priority: 'medium',
+    description: 'Submit next week\'s pullout plan: anchor story, features, photo plan, and ad-space coordination with marketing.' },
+  { title: 'Circulation push: story from a weak-circulation pocket',          category: 'Circulation Drive',          priority: 'medium',
+    description: 'Identify a locality with weak circulation. File a strong hyperlocal story from there and coordinate copy promotion with circulation team.' },
+  { title: 'Reader grievance follow-up: publish impact story',               category: 'Reader Connect / Campaign',  priority: 'medium',
+    description: 'Pick one previously published reader complaint. Check current status with authorities and publish the impact/follow-up.' },
+  { title: 'Daily evening planning meeting with desk & reporters',            category: 'Page Planning',              priority: 'low',
+    description: 'Run the 6 PM planning meeting: tomorrow\'s page-1 candidates, assignments, photo plan, and pending follow-ups.' },
+  { title: 'Content audit: compare our edition vs competitor',                category: 'Content Audit',              priority: 'low',
+    description: 'Morning audit: what did competitors carry that we missed? List missed stories and assign catch-up follow-ups by noon.' },
 ];
 
 const GROUP_TYPES = ['RE', 'Chief Reporter', 'Desk Head', 'Mixed'];
@@ -747,6 +787,57 @@ function ReportTab() {
         </div>
       )}
 
+      {/* Branch-wise summary */}
+      {report?.report?.length > 0 && (() => {
+        const byBranch = {};
+        report.report.forEach(r => {
+          const b = r.assigned_to_branch || r.assigned_to_state || '—';
+          if (!byBranch[b]) byBranch[b] = { branch: b, total: 0, completed: 0, overdue: 0 };
+          byBranch[b].total     += Number(r.total)     || 0;
+          byBranch[b].completed += Number(r.completed) || 0;
+          byBranch[b].overdue   += Number(r.overdue)   || 0;
+        });
+        const rows = Object.values(byBranch)
+          .map(b => ({ ...b, rate: b.total ? Math.round((b.completed / b.total) * 100) : 0 }))
+          .sort((a, b) => b.rate - a.rate);
+        return (
+          <SectionCard title="Branch-wise Performance" className="mb-4">
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 700 }}>
+                    <th style={{ padding: '8px 10px', textAlign: 'left' }}>Branch</th>
+                    <th style={{ padding: '8px 6px', textAlign: 'center' }}>Tasks</th>
+                    <th style={{ padding: '8px 6px', textAlign: 'center' }}>Completed</th>
+                    <th style={{ padding: '8px 6px', textAlign: 'center' }}>Overdue</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'left', minWidth: 160 }}>Completion Rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((b, i) => (
+                    <tr key={b.branch} style={{ borderTop: '1px solid var(--border)', background: i % 2 === 0 ? 'transparent' : 'var(--bg)' }}>
+                      <td style={{ padding: '8px 10px', fontWeight: 600 }}>{b.branch}</td>
+                      <td style={{ padding: '8px 6px', textAlign: 'center' }}>{b.total}</td>
+                      <td style={{ padding: '8px 6px', textAlign: 'center', color: '#16a34a', fontWeight: 600 }}>{b.completed}</td>
+                      <td style={{ padding: '8px 6px', textAlign: 'center', color: b.overdue > 0 ? '#ef4444' : 'var(--muted)' }}>{b.overdue}</td>
+                      <td style={{ padding: '8px 10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ flex: 1, height: 6, borderRadius: 9999, background: 'var(--border)' }}>
+                            <div style={{ width: `${b.rate}%`, height: 6, borderRadius: 9999,
+                              background: b.rate >= 85 ? '#16a34a' : b.rate >= 70 ? '#3b82f6' : b.rate >= 50 ? '#f59e0b' : '#ef4444' }} />
+                          </div>
+                          <span style={{ fontSize: 12, fontWeight: 700, minWidth: 36, textAlign: 'right' }}>{b.rate}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </SectionCard>
+        );
+      })()}
+
       <SectionCard title="Employee Grading">
         {loading ? (
           <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>Loading…</div>
@@ -815,6 +906,22 @@ function TaskBankTab({ canEdit }) {
     load();
   };
 
+  const [packLoading, setPackLoading] = useState(false);
+  const loadNewsroomPack = async () => {
+    const existing = new Set(templates.map(t => t.title.toLowerCase().trim()));
+    const missing  = NEWSROOM_PACK.filter(t => !existing.has(t.title.toLowerCase().trim()));
+    if (!missing.length) return alert('All newsroom pack templates are already in the bank.');
+    if (!confirm(`Add ${missing.length} ready-made newsroom task templates to the bank?`)) return;
+    setPackLoading(true);
+    let added = 0;
+    for (const t of missing) {
+      try { await api.createTaskBankItem(t); added++; } catch { /* skip on error */ }
+    }
+    setPackLoading(false);
+    alert(`✅ ${added} newsroom templates added.`);
+    load();
+  };
+
   const cats = ['all', ...Array.from(new Set(templates.map(t => t.category))).sort()];
   const filtered = templates.filter(t => {
     if (catFilter !== 'all' && t.category !== catFilter) return false;
@@ -828,10 +935,17 @@ function TaskBankTab({ canEdit }) {
       <SectionCard
         title={`Task Bank (${templates.length} templates)`}
         action={canEdit && (
-          <button className="btn-primary flex items-center gap-1 text-sm px-3 py-1"
-            onClick={() => { setEditing(null); setShowForm(true); }}>
-            <Plus size={13} /> New Template
-          </button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn-ghost flex items-center gap-1 text-sm px-3 py-1"
+              style={{ color: '#7c3aed', fontWeight: 600 }}
+              disabled={packLoading} onClick={loadNewsroomPack}>
+              {packLoading ? <Loader2 size={13} className="animate-spin" /> : <Star size={13} />} Newsroom Pack
+            </button>
+            <button className="btn-primary flex items-center gap-1 text-sm px-3 py-1"
+              onClick={() => { setEditing(null); setShowForm(true); }}>
+              <Plus size={13} /> New Template
+            </button>
+          </div>
         )}
       >
         {/* Filters */}
@@ -1017,13 +1131,361 @@ function TaskBankPicker({ onSelect, onClose }) {
   );
 }
 
+// ── Weekly Plan & Review Tab ──────────────────────────────────────────────────
+// RE submits a weekly action plan for their branch; State Head / Admin review & grade.
+const PLAN_NOTES_TEMPLATE = `📰 WEEKLY EDITORIAL ACTION PLAN
+═══════════════════════════════════════
+
+1️⃣ PAGE-1 CONTENDERS (lead stories planned this week)
+   • Story:                    | Reporter:          | Day:
+   •
+
+2️⃣ EXCLUSIVES / KHULASA / IMPACT JOURNALISM
+   • Target: ___ exclusives this week
+   • Investigation in progress:
+   • Expected impact / follow-up plan:
+
+3️⃣ EVENTS, FESTIVALS & CIVIC CALENDAR (advance planning)
+   • Event:                    | Coverage type (photo/special page/live):
+   •
+
+4️⃣ LOCAL EDITION & PULLOUT PLANNING
+   • Special pages / supplements planned:
+   • District & rural coverage focus:
+
+5️⃣ CIRCULATION-DRIVING CONTENT (reader connect)
+   • Hyperlocal series / campaigns:
+   • Reader panchayat / public grievance follow-ups:
+
+6️⃣ NEWSROOM OPERATIONS
+   • Staffing & leave adjustments:
+   • Stringer network gaps to fill:
+   • Edition deadline discipline plan:
+
+7️⃣ LAST WEEK'S REVIEW (self-assessment)
+   • Targets achieved:
+   • Missed stories / gaps to fix:
+   • QC mistakes & correction plan:
+`;
+
+const GRADE_DESC = { A: 'Excellent', B: 'Good', C: 'Average', D: 'Poor' };
+
+function nextMonday() {
+  const d = new Date();
+  const day = d.getDay(); // 0=Sun
+  const diff = day === 0 ? 1 : 8 - day; // days until next Monday
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+
+function WeeklyReviewTab() {
+  const { user } = useApp();
+  const [plans,     setPlans]     = useState([]);
+  const [canReview, setCanReview] = useState(false);
+  const [loading,   setLoading]   = useState(true);
+  const [editing,   setEditing]   = useState(null); // plan being edited
+  const [saving,    setSaving]    = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    api.listWeeklyReviews()
+      .then(r => { setPlans(r.plans || []); setCanReview(!!r.canReview); setLoading(false); })
+      .catch(() => setLoading(false));
+  };
+  useEffect(load, []);
+
+  const upcoming  = nextMonday();
+  const myPlan    = plans.find(p => p.week_start === upcoming && p.submitted_by === user?.sub);
+  const isWeekend = [0, 6].includes(new Date().getDay());
+  const canSubmit = ['Admin', 'State Head', 'Regional Editor'].includes(user?.role);
+
+  const startPlan = () => setEditing(myPlan || {
+    week_start: upcoming,
+    notes: PLAN_NOTES_TEMPLATE,
+    action_items: [],
+  });
+
+  const save = async (plan) => {
+    setSaving(true);
+    try { await api.saveWeeklyReview(plan); setEditing(null); load(); }
+    catch (e) { alert('Failed: ' + e.message); }
+    finally { setSaving(false); }
+  };
+
+  const toggleItem = async (plan, idx) => {
+    const items = plan.action_items.map((it, i) =>
+      i === idx ? { ...it, status: it.status === 'done' ? 'pending' : 'done' } : it);
+    await api.saveWeeklyReview({ id: plan.id, week_start: plan.week_start, notes: plan.notes, action_items: items })
+      .catch(e => alert(e.message));
+    load();
+  };
+
+  return (
+    <div>
+      {/* Submit banner */}
+      {canSubmit && !myPlan && !editing && (
+        <div style={{
+          background: isWeekend ? '#fef2f2' : '#fffbeb',
+          border: `1px solid ${isWeekend ? '#fecaca' : '#fde68a'}`,
+          borderRadius: 10, padding: '14px 18px', marginBottom: 16,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+        }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: isWeekend ? '#b91c1c' : '#92400e' }}>
+              {isWeekend ? '⏰ Weekly action plan is due this weekend' : '📋 Weekly action plan'}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+              {user?.role === 'Regional Editor'
+                ? <>Submit your branch action plan for the week starting <b>{upcoming}</b>. State Head will review &amp; grade it.</>
+                : <>REs submit branch plans for the week starting <b>{upcoming}</b>; you review &amp; grade them below.</>}
+            </div>
+          </div>
+          <button className="btn-primary flex items-center gap-1.5 text-sm" onClick={startPlan}>
+            <Plus size={14} /> Submit Action Plan
+          </button>
+        </div>
+      )}
+      {canSubmit && myPlan && !editing && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+          <button className="btn-ghost flex items-center gap-1.5 text-sm" onClick={startPlan}>
+            <Edit2 size={13} /> Edit My Plan for {upcoming}
+          </button>
+        </div>
+      )}
+
+      {editing && (
+        <PlanEditor plan={editing} saving={saving} user={user}
+          onCancel={() => setEditing(null)} onSave={save} />
+      )}
+
+      {/* Plans list */}
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>Loading…</div>
+      ) : plans.length === 0 && !editing ? (
+        <div style={{ textAlign: 'center', padding: 40 }}>
+          <Calendar size={36} style={{ color: 'var(--muted)', margin: '0 auto 12px' }} />
+          <p style={{ fontSize: 14, color: 'var(--muted)' }}>No weekly plans submitted yet.</p>
+          <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+            Every Saturday 10 AM a Telegram reminder goes out. REs submit branch plans; State Head/Admin review &amp; grade.
+          </p>
+        </div>
+      ) : (
+        plans.map(p => (
+          <PlanCard key={p.id} plan={p} user={user} canReview={canReview}
+            onToggle={toggleItem} onRefresh={load} />
+        ))
+      )}
+    </div>
+  );
+}
+
+function PlanCard({ plan, user, canReview, onToggle, onRefresh }) {
+  const [showReview, setShowReview] = useState(false);
+  const [comment, setComment] = useState(plan.review_comment || '');
+  const [grade,   setGrade]   = useState(plan.grade || '');
+  const [saving,  setSaving]  = useState(false);
+
+  const done   = plan.action_items.filter(i => i.status === 'done').length;
+  const total  = plan.action_items.length;
+  const isOwner = plan.submitted_by === user?.sub;
+  const scope   = [plan.branch, plan.state].filter(Boolean).join(', ') || '—';
+
+  const saveReview = async () => {
+    setSaving(true);
+    try {
+      await api.saveWeeklyReview({ id: plan.id, review: true, review_comment: comment, grade: grade || undefined });
+      setShowReview(false);
+      onRefresh();
+    } catch (e) { alert('Failed: ' + e.message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <SectionCard className="mb-4"
+      title={
+        <span className="flex items-center gap-2 flex-wrap">
+          <Calendar size={14} />
+          Week of {plan.week_start}
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}>
+            · {plan.submitted_by_name || plan.submitted_by} ({plan.submitted_role || '—'}) · {scope}
+          </span>
+          {total > 0 && (
+            <span style={{
+              fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 9999,
+              background: done === total ? '#f0fdf4' : '#fffbeb',
+              color:      done === total ? '#16a34a' : '#92400e',
+            }}>
+              {done}/{total} done
+            </span>
+          )}
+          {plan.grade ? (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              minWidth: 24, height: 24, borderRadius: '50%', fontWeight: 800, fontSize: 13,
+              background: (GRADE_COLOR[plan.grade] || '#6b7280') + '22',
+              color: GRADE_COLOR[plan.grade] || '#6b7280',
+            }} title={`Graded ${plan.grade} (${GRADE_DESC[plan.grade]}) by ${plan.reviewed_by_name || ''}`}>
+              {plan.grade}
+            </span>
+          ) : (
+            <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 9999, background: '#f3f4f6', color: '#6b7280' }}>
+              Awaiting review
+            </span>
+          )}
+        </span>
+      }
+      action={canReview && (
+        <button className="btn-ghost text-sm flex items-center gap-1.5" onClick={() => setShowReview(s => !s)}>
+          <Star size={13} /> {plan.grade ? 'Edit Review' : 'Review & Grade'}
+        </button>
+      )}>
+
+      {plan.notes && (
+        <pre style={{
+          fontSize: 12, color: 'var(--text)', whiteSpace: 'pre-wrap', fontFamily: 'inherit',
+          background: 'var(--bg)', borderRadius: 8, padding: '10px 12px', marginBottom: 12, lineHeight: 1.6,
+        }}>{plan.notes}</pre>
+      )}
+
+      {plan.action_items.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {plan.action_items.map((it, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+              background: 'var(--bg)', borderRadius: 8,
+              borderLeft: `3px solid ${PRIORITY[it.priority]?.dot || '#6b7280'}`,
+              opacity: it.status === 'done' ? 0.6 : 1,
+            }}>
+              <input type="checkbox" checked={it.status === 'done'}
+                disabled={!isOwner && !canReview}
+                onChange={() => onToggle(plan, i)}
+                style={{ cursor: (isOwner || canReview) ? 'pointer' : 'default', flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: 13, textDecoration: it.status === 'done' ? 'line-through' : 'none' }}>
+                {it.title}
+              </span>
+              <PriorityBadge p={it.priority} />
+              {it.due_date && <span style={{ fontSize: 11, color: 'var(--muted)', flexShrink: 0 }}>📅 {it.due_date}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Existing review remark */}
+      {plan.review_comment && !showReview && (
+        <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 8, background: '#eff6ff', border: '1px solid #bfdbfe' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8', marginBottom: 3 }}>
+            REVIEW by {plan.reviewed_by_name || plan.reviewed_by}
+            {plan.reviewed_at ? ` · ${String(plan.reviewed_at).slice(0, 16).replace('T', ' ')}` : ''}
+          </div>
+          <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.5 }}>{plan.review_comment}</p>
+        </div>
+      )}
+
+      {/* Review form (State Head / Admin) */}
+      {showReview && canReview && (
+        <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 8, background: 'var(--bg)', border: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>REVIEW & GRADE THIS PLAN</div>
+          <textarea className="input" rows={3} placeholder="Review remarks — what was good, what to improve…"
+            value={comment} onChange={e => setComment(e.target.value)}
+            style={{ resize: 'vertical', width: '100%', fontSize: 13, marginBottom: 8 }} />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}>Grade:</span>
+            {['A', 'B', 'C', 'D'].map(g => (
+              <button key={g} type="button" onClick={() => setGrade(g)}
+                style={{
+                  width: 34, height: 34, borderRadius: '50%', fontWeight: 800, fontSize: 14, cursor: 'pointer',
+                  border: `2px solid ${grade === g ? GRADE_COLOR[g] : 'var(--border)'}`,
+                  background: grade === g ? GRADE_COLOR[g] : 'transparent',
+                  color: grade === g ? '#fff' : GRADE_COLOR[g],
+                }} title={GRADE_DESC[g]}>
+                {g}
+              </button>
+            ))}
+            <div style={{ flex: 1 }} />
+            <button className="btn-ghost text-sm" onClick={() => setShowReview(false)} disabled={saving}>Cancel</button>
+            <button className="btn-primary text-sm flex items-center gap-1.5" onClick={saveReview} disabled={saving}>
+              {saving ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />} Save Review
+            </button>
+          </div>
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
+function PlanEditor({ plan, saving, user, onCancel, onSave }) {
+  const [notes, setNotes] = useState(plan.notes || '');
+  const [items, setItems] = useState(plan.action_items?.length ? plan.action_items : [{ title: '', priority: 'medium', due_date: '', status: 'pending' }]);
+
+  const setItem = (i, k, v) => setItems(its => its.map((it, idx) => idx === i ? { ...it, [k]: v } : it));
+  const addItem = () => setItems(its => [...its, { title: '', priority: 'medium', due_date: '', status: 'pending' }]);
+  const removeItem = i => setItems(its => its.filter((_, idx) => idx !== i));
+
+  const scope = [user?.branch, user?.state].filter(Boolean).join(', ');
+
+  return (
+    <SectionCard className="mb-4"
+      title={<span className="flex items-center gap-2"><Edit2 size={14} /> Action Plan — Week of {plan.week_start}{scope ? ` · ${scope}` : ''}</span>}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div>
+          <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 6 }}>
+            Coverage &amp; Operations Plan (stories, events, exclusives, staffing)
+          </label>
+          <textarea className="input" rows={10} value={notes} onChange={e => setNotes(e.target.value)}
+            style={{ resize: 'vertical', width: '100%', fontSize: 13, lineHeight: 1.6 }} />
+        </div>
+
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}>
+              Weekly Targets / Action Items
+            </label>
+            <button type="button" onClick={addItem}
+              style={{ fontSize: 11, color: 'var(--brand)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>
+              <Plus size={12} /> Add Item
+            </button>
+          </div>
+          {items.map((it, i) => (
+            <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+              <input className="input" style={{ flex: 1, fontSize: 13 }} placeholder="Target / action item…"
+                value={it.title} onChange={e => setItem(i, 'title', e.target.value)} />
+              <select className="input" style={{ width: 100, fontSize: 12 }} value={it.priority}
+                onChange={e => setItem(i, 'priority', e.target.value)}>
+                <option value="high">🔴 High</option>
+                <option value="medium">🟡 Med</option>
+                <option value="low">🟢 Low</option>
+              </select>
+              <input className="input" type="date" style={{ width: 140, fontSize: 12 }}
+                value={it.due_date} onChange={e => setItem(i, 'due_date', e.target.value)} />
+              <button type="button" onClick={() => removeItem(i)} style={{ color: '#ef4444', cursor: 'pointer', flexShrink: 0 }}>
+                <X size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button className="btn-ghost" onClick={onCancel} disabled={saving}>Cancel</button>
+          <button className="btn-primary flex items-center gap-1.5" disabled={saving}
+            onClick={() => onSave({ ...plan, notes, action_items: items.filter(t => t.title.trim()) })}>
+            {saving ? <><Loader2 size={13} className="animate-spin" /> Submitting…</> : <><CheckCircle2 size={13} /> Submit Plan</>}
+          </button>
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function Tasks() {
   const { user } = useApp();
-  const [activeTab,    setActiveTab]    = useState('tasks'); // tasks | groups | report
+  const [searchParams] = useSearchParams();
+  const [activeTab,    setActiveTab]    = useState(searchParams.get('tab') || 'tasks'); // tasks | groups | bank | report | review
   const [tasks,        setTasks]        = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [catFilter,    setCatFilter]    = useState('all');
+  const [search,       setSearch]       = useState('');
   const [showCreate,   setShowCreate]   = useState(false);
 
   const canCreate = ['Admin', 'State Head'].includes(user?.role);
@@ -1033,7 +1495,7 @@ export default function Tasks() {
     setLoading(true);
     try {
       const params = {};
-      if (statusFilter !== 'all') params.status = statusFilter;
+      if (statusFilter !== 'all' && statusFilter !== 'overdue') params.status = statusFilter;
       const r = await api.listTasks(params);
       setTasks(r.tasks || []);
     } catch { setTasks([]); }
@@ -1042,13 +1504,31 @@ export default function Tasks() {
 
   useEffect(() => { if (activeTab === 'tasks') load(); }, [load, activeTab]);
 
+  const isOverdue = t => t.due_date && ['pending', 'in_progress'].includes(t.status) &&
+    new Date(String(t.due_date).slice(0, 10)) < new Date(new Date().toISOString().slice(0, 10));
+
   const counts = tasks.reduce((acc, t) => { acc[t.status] = (acc[t.status] || 0) + 1; return acc; }, {});
+  counts.overdue = tasks.filter(isOverdue).length;
+
+  const visibleTasks = tasks.filter(t => {
+    if (statusFilter === 'overdue' && !isOverdue(t)) return false;
+    if (catFilter !== 'all' && t.category !== catFilter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      if (!t.title?.toLowerCase().includes(q) &&
+          !t.assigned_to_name?.toLowerCase().includes(q) &&
+          !t.assigned_to_branch?.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+  const taskCats = ['all', ...Array.from(new Set(tasks.map(t => t.category).filter(Boolean))).sort()];
 
   const TABS = [
     { key: 'tasks',    label: 'Tasks',            Icon: ClipboardList },
     { key: 'groups',   label: 'Groups',            Icon: Users },
     { key: 'bank',     label: 'Task Bank',         Icon: Star },
     { key: 'report',   label: 'Report & Grading',  Icon: BarChart2 },
+    { key: 'review',   label: 'Weekly Review',     Icon: Calendar },
   ];
 
   return (
@@ -1081,22 +1561,31 @@ export default function Tasks() {
       {/* Tasks Tab */}
       {activeTab === 'tasks' && (
         <>
-          {/* Status filter */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
-            {[['all','All'], ['pending', 'Pending'], ['in_progress', 'In Progress'], ['completed', 'Completed'], ['cancelled', 'Cancelled']].map(([key, label]) => {
+          {/* Status filter + search */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            {[['all','All'], ['pending', 'Pending'], ['in_progress', 'In Progress'], ['overdue', '⚠️ Overdue'], ['completed', 'Completed'], ['cancelled', 'Cancelled']].map(([key, label]) => {
               const count = key === 'all' ? tasks.length : (counts[key] || 0);
+              const isOd  = key === 'overdue';
               return (
                 <button key={key} onClick={() => setStatusFilter(key)}
                   style={{
                     padding: '5px 14px', borderRadius: 9999, fontSize: 12, fontWeight: 600,
-                    border: '1px solid var(--border)', cursor: 'pointer',
-                    background: statusFilter === key ? 'var(--brand)' : 'var(--bg)',
-                    color:      statusFilter === key ? '#fff'          : 'var(--text)',
+                    border: `1px solid ${isOd && count > 0 && statusFilter !== key ? '#fecaca' : 'var(--border)'}`,
+                    cursor: 'pointer',
+                    background: statusFilter === key ? (isOd ? '#ef4444' : 'var(--brand)') : (isOd && count > 0 ? '#fef2f2' : 'var(--bg)'),
+                    color:      statusFilter === key ? '#fff' : (isOd && count > 0 ? '#b91c1c' : 'var(--text)'),
                   }}>
                   {label}{count > 0 ? ` (${count})` : ''}
                 </button>
               );
             })}
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+            <input className="input" placeholder="🔍 Search task, person or branch…" value={search}
+              onChange={e => setSearch(e.target.value)} style={{ flex: 1, minWidth: 200, fontSize: 13 }} />
+            <select className="input" value={catFilter} onChange={e => setCatFilter(e.target.value)} style={{ fontSize: 13, maxWidth: 240 }}>
+              {taskCats.map(c => <option key={c} value={c}>{c === 'all' ? 'All Categories' : c}</option>)}
+            </select>
           </div>
 
           {/* KPI cards */}
@@ -1108,22 +1597,28 @@ export default function Tasks() {
                   <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{STATUS[key].label}</div>
                 </div>
               ))}
+              <div className="card p-4" style={{ borderTop: '3px solid #ef4444' }}>
+                <div style={{ fontSize: 26, fontWeight: 700, color: '#ef4444' }}>{counts.overdue || 0}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>Overdue ⚠️</div>
+              </div>
             </div>
           )}
 
-          <SectionCard title={<span className="flex items-center gap-1.5"><ClipboardList size={14} /> Tasks</span>}>
+          <SectionCard title={<span className="flex items-center gap-1.5"><ClipboardList size={14} /> Tasks{visibleTasks.length !== tasks.length ? ` (${visibleTasks.length} of ${tasks.length})` : ''}</span>}>
             {loading ? (
               <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>Loading…</div>
-            ) : tasks.length === 0 ? (
+            ) : visibleTasks.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 40 }}>
                 <ClipboardList size={36} style={{ color: 'var(--muted)', margin: '0 auto 12px' }} />
                 <p style={{ fontSize: 14, color: 'var(--muted)' }}>
-                  {canCreate ? 'No tasks yet. Click "New Task" to create one.' : 'No tasks assigned to you.'}
+                  {tasks.length === 0
+                    ? (canCreate ? 'No tasks yet. Click "New Task" to create one.' : 'No tasks assigned to you.')
+                    : 'No tasks match your filters.'}
                 </p>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {tasks.map(t => <TaskCard key={t.id} task={t} canEdit={canEdit} onRefresh={load} />)}
+                {visibleTasks.map(t => <TaskCard key={t.id} task={t} canEdit={canEdit} onRefresh={load} />)}
               </div>
             )}
           </SectionCard>
@@ -1135,6 +1630,7 @@ export default function Tasks() {
       {activeTab === 'groups' && <GroupsTab canEdit={canCreate} />}
       {activeTab === 'bank'   && <TaskBankTab canEdit={canCreate} />}
       {activeTab === 'report' && <ReportTab />}
+      {activeTab === 'review' && <WeeklyReviewTab />}
     </div>
   );
 }

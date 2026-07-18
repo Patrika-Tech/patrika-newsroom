@@ -359,18 +359,6 @@ export default function Reports() {
         subtitle={`${subtitle} — click a report card to expand, set filters and download Excel`}
       />
 
-      {/* Quick stats strip */}
-      {!summaryLoading && summary && (
-        <div className="flex flex-wrap gap-3 mb-5">
-          <StatChip label="Active Employees" value={(summary.employees||0).toLocaleString()} color="#3b82f6" />
-          <StatChip label="Stories Yesterday" value={(summary.stories||0).toLocaleString()} color="#d71920" />
-          <StatChip label="Editions Tracked" value={(summary.editions||0).toLocaleString()} color="#C9A227" />
-          <StatChip label="QC Mistakes" value={(summary.qcMistakes||0).toLocaleString()} color="#8c0a0e" />
-          <StatChip label="Field Visits" value={(summary.visits||0).toLocaleString()} color="#16a34a" />
-          <StatChip label="Legal Cases" value={(summary.legal||0).toLocaleString()} color="#7c3aed" />
-        </div>
-      )}
-
       {/* Report cards */}
       <div className="grid gap-4 md:grid-cols-2">
         {REPORTS.map(report => (

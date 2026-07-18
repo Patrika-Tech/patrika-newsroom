@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ResponsiveContainer, ComposedChart, Area, BarChart, Bar,
   PieChart, Pie, Cell, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
 } from 'recharts';
 import {
   FileText, Clock, AlertCircle, MapPin, Scale, Users,
-  Bell, Camera, Newspaper, TrendingUp, PenLine,
+  Bell, Camera, Newspaper, TrendingUp, PenLine, X, Loader2, CalendarCheck,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.jsx';
 import { api } from '../api/client.js';
@@ -111,12 +112,38 @@ function WireTicker({ feeds, branch }) {
 
 export default function Dashboard() {
   const { t, state, branch } = useApp();
+  const navigate = useNavigate();
+  const [weeklyPlans, setWeeklyPlans] = useState(null); // null = hidden (no access)
+
+  useEffect(() => {
+    api.listWeeklyReviews()
+      .then(r => setWeeklyPlans(r.plans || []))
+      .catch(() => setWeeklyPlans(null));
+  }, []);
   const [d, setD]           = useState(null);
   const [topDelay, setTopDelay] = useState([]);
   const [feeds, setFeeds]   = useState([]);
   const [profiles, setProfiles] = useState([]);
   const [gradingTop, setGradingTop]       = useState(null);
   const [gradingTopLoading, setGTLoading] = useState(true);
+  const [detailModal, setDetailModal] = useState(null); // 'qc' | 'delays' | null
+  const [qcDetail, setQcDetail]             = useState(null);
+  const [qcDetailLoading, setQcDetailLoading] = useState(false);
+
+  const openQcDetail = () => {
+    setDetailModal('qc');
+    if (qcDetail) return; // already fetched for this filter set
+    setQcDetailLoading(true);
+    const toIST = ms => new Date(ms + 5.5 * 3600000).toISOString().slice(0, 10);
+    // Note: qc_review.state is always empty, so no state filter here (it would return 0 rows)
+    api.generateReport('qc', {
+      from: toIST(Date.now() - 7 * 864e5),
+      to:   toIST(Date.now() - 864e5),
+    })
+      .then(r => setQcDetail(r))
+      .catch(() => setQcDetail({ columns: [], rows: [] }))
+      .finally(() => setQcDetailLoading(false));
+  };
 
   useEffect(() => {
     api.editorialFeeds().then(d => setFeeds(d.feeds || [])).catch(() => {});
@@ -137,6 +164,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     setD(null);
+    setQcDetail(null);
     api.dashboard(state, branch).then(setD).catch(() => setD({}));
     api.weeklyTrend(state, branch, 7).then(r => {
       // Aggregate last 7 days: sum delay_minutes per edition, compute avg
@@ -198,17 +226,39 @@ export default function Dashboard() {
         <KPICard
           label="QC Mistakes"
           value={k.qcMistakes ?? '—'}
-          sub="last 7 days"
+          sub="last 7 days · click for details"
           accent={k.qcMistakes > 0 ? '#d71920' : '#16a34a'}
           icon={AlertCircle}
+          onClick={openQcDetail}
         />
         <KPICard
           label="Delayed Editions"
           value={k.delayed ?? '—'}
-          sub="over schedule"
+          sub="over schedule · click for details"
           accent={k.delayed > 0 ? '#d71920' : '#16a34a'}
           icon={Clock}
+          onClick={() => setDetailModal('delays')}
         />
+        {weeklyPlans !== null && (() => {
+          // Active plan week: Monday of current week (or next Monday on weekends)
+          const d = new Date(); const day = d.getDay();
+          d.setDate(d.getDate() + (day === 0 ? 1 : day === 6 ? 2 : 1 - day));
+          const weekStart = d.toISOString().slice(0, 10);
+          const weekPlans = weeklyPlans.filter(p => p.week_start === weekStart);
+          const graded    = weekPlans.filter(p => p.grade).length;
+          return (
+            <KPICard
+              label="Weekly Review"
+              value={weekPlans.length}
+              sub={weekPlans.length
+                ? `plans · ${graded} graded · click to open`
+                : 'no plans yet · click to open'}
+              accent={weekPlans.length === 0 ? '#f59e0b' : graded === weekPlans.length ? '#16a34a' : '#3b82f6'}
+              icon={CalendarCheck}
+              onClick={() => navigate('/tasks?tab=review')}
+            />
+          );
+        })()}
       </div>
 
       {/* ── Row 1: Trend + Profile Pie ────────────────────────────────────────── */}
@@ -497,6 +547,82 @@ export default function Dashboard() {
         </SectionCard>
       </div>
 
+      {/* ── QC Mistakes detail modal ────────────────────────────────────────── */}
+      {detailModal === 'qc' && (
+        <DetailModal title="QC Mistakes — Last 7 Days" onClose={() => setDetailModal(null)}>
+          {qcDetailLoading ? (
+            <div className="flex items-center justify-center py-12 gap-2" style={{ color: 'var(--muted)' }}>
+              <Loader2 size={18} className="animate-spin" /> Loading…
+            </div>
+          ) : !qcDetail?.rows?.length ? (
+            <EmptyState msg="No QC mistakes recorded in the last 7 days" />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left" style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}>
+                    {qcDetail.columns.map(c => <th key={c} className="pb-2 pr-3 font-medium whitespace-nowrap">{c}</th>)}
+                  </tr>
+                </thead>
+                <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                  {qcDetail.rows.map((row, i) => (
+                    <tr key={i}>
+                      {row.map((cell, j) => <td key={j} className="py-2 pr-3 text-xs align-top">{cell === '' || cell == null ? '—' : String(cell)}</td>)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </DetailModal>
+      )}
+
+      {/* ── Delayed Editions detail modal ───────────────────────────────────── */}
+      {detailModal === 'delays' && (
+        <DetailModal title="Delayed Editions — Today" onClose={() => setDetailModal(null)}>
+          {editionDelays.filter(e => e.status !== 'ontime').length === 0 ? (
+            <EmptyState msg="No delayed editions today" />
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left" style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}>
+                  <th className="pb-2 pr-4 font-medium">Edition</th>
+                  <th className="pb-2 pr-4 font-medium">Unit</th>
+                  <th className="pb-2 font-medium text-right">Delay</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                {editionDelays.filter(e => e.status !== 'ontime').map((e, i) => (
+                  <tr key={i}>
+                    <td className="py-2 pr-4 font-medium">{e.edition}</td>
+                    <td className="py-2 pr-4 text-xs" style={{ color: 'var(--muted)' }}>{e.unit || '—'}</td>
+                    <td className="py-2 text-right font-semibold tabular-nums"
+                      style={{ color: e.status === 'late' ? '#dc2626' : '#ea580c' }}>
+                      {e.delay_hhmm}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </DetailModal>
+      )}
+
+    </div>
+  );
+}
+
+function DetailModal({ title, onClose, children }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="card relative z-10 w-full max-w-3xl p-5 max-h-[80vh] flex flex-col">
+        <div className="mb-3 flex items-center justify-between flex-shrink-0">
+          <h3 className="text-base font-bold">{title}</h3>
+          <button onClick={onClose} className="rounded-lg p-1 hover:bg-black/10"><X size={18} /></button>
+        </div>
+        <div className="overflow-y-auto">{children}</div>
+      </div>
     </div>
   );
 }

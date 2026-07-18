@@ -26,17 +26,22 @@ const normState = s => STATE_NORM[(s||'').toLowerCase().trim()] || (s||'').toLow
 const HIDDEN_EDITIONS = ['nt jaipur city', 'nt jaipur dak'];
 const isHidden = name => HIDDEN_EDITIONS.includes((name || '').toLowerCase().trim());
 
-// Walk release timestamps DESC; return first with delay < 240 min, else earliest
-function pickReleaseTime(allTimesStr, schedMs) {
+// Same rules as production.js: ignore uploads after pub_date 02:30 AM
+// (same-day corrections); if all uploads are later, cap at 02:30:00.
+function isBeforePubDate230(t, pubDate) {
+  if (!t || !pubDate) return false;
+  const tMs   = new Date(String(t).replace('T', ' ').slice(0, 19)).getTime();
+  const capMs = new Date(`${pubDate} 02:30:00`).getTime();
+  return tMs < capMs;
+}
+
+function pickLatestBefore230(allTimesStr, pubDate) {
   if (!allTimesStr) return null;
   const parts = String(allTimesStr).split('|').map(s => s.trim()).filter(Boolean);
-  for (const t of parts) {
-    const ms = new Date(t).getTime();
-    if (isNaN(ms)) continue;
-    if (Math.round((ms - schedMs) / 60000) < 240) return { ms, time: t };
-  }
-  const last = parts[parts.length - 1];
-  return last ? { ms: new Date(last).getTime(), time: last } : null;
+  const valid = parts.find(t => !isNaN(new Date(t).getTime()) && isBeforePubDate230(t, pubDate));
+  if (valid) return { ms: new Date(valid.replace('T', ' ').slice(0, 19)).getTime(), time: valid };
+  const capped = `${pubDate} 02:30:00`;
+  return { ms: new Date(capped).getTime(), time: capped };
 }
 
 function fmtDelay(minutes) {
@@ -253,22 +258,19 @@ module.exports = async function handler(req, res) {
         schedDate.setHours(sh, sm, 0, 0);
         const schedMs = schedDate.getTime();
 
-        // Use pickReleaseTime to avoid inflated delays from late re-uploads
-        const maxMs = new Date(r.release_time).getTime();
-        let releaseMs = maxMs;
-        if (Math.round((maxMs - schedMs) / 60000) >= 240) {
-          const best = pickReleaseTime(r.all_release_times, schedMs);
-          if (best && best.ms !== maxMs) releaseMs = best.ms;
-        }
+        // Same rules as production.js: latest upload before pub_date 02:30 AM,
+        // cap at 149 min; delays under 5 min count as on-time
+        const allTimes = r.all_release_times || String(r.release_time || '').replace('T', ' ').slice(0, 19);
+        const best     = pickLatestBefore230(allTimes, todayStr);
+        const releaseMs = best ? best.ms : new Date(r.release_time).getTime();
 
-        // Hard cap at 239 min (3h 59m)
-        const delay_minutes = Math.min(Math.round((releaseMs - schedMs) / 60000), 239);
+        const delay_minutes = Math.min(Math.round((releaseMs - schedMs) / 60000), 149);
         return {
           edition:    sched.edition_name || sched.unit || r.code,
           unit:       sched.unit || '',
           delay:      delay_minutes,
           delay_hhmm: fmtDelay(delay_minutes),
-          status:     delay_minutes <= 0 ? 'ontime' : delay_minutes <= 30 ? 'warn' : 'late',
+          status:     delay_minutes < 5 ? 'ontime' : delay_minutes <= 30 ? 'warn' : 'late',
         };
       })
       .filter(Boolean)

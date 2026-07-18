@@ -318,6 +318,8 @@ export const api = {
     const p = new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([,v]) => v)));
     return request(`/tasks/report${p.toString() ? '?' + p.toString() : ''}`);
   },
+  listWeeklyReviews: ()     => request('/tasks/weekly-review'),
+  saveWeeklyReview:  (data) => request('/tasks/weekly-review', { method: 'POST', body: JSON.stringify(data) }),
 
   // ── Task Groups ──────────────────────────────────────────────────────────────
   // ── Task Bank ────────────────────────────────────────────────────────────────

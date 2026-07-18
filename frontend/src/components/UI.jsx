@@ -13,9 +13,10 @@ export function Logo({ size = 36, withText = true }) {
   );
 }
 
-export function KPICard({ label, value, sub, accent = '#d71920', icon: Icon }) {
+export function KPICard({ label, value, sub, accent = '#d71920', icon: Icon, onClick }) {
   return (
-    <div className="card p-4 animate-rise">
+    <div className="card p-4 animate-rise" onClick={onClick}
+      style={onClick ? { cursor: 'pointer' } : undefined}>
       <div className="flex items-start justify-between">
         <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--muted)' }}>{label}</span>
         {Icon && <span className="rounded-lg p-1.5" style={{ background: accent + '1a', color: accent }}><Icon size={16} /></span>}

@@ -214,6 +214,8 @@ function OverviewTab({ emps, filtered, rets, loading, ageBuckets, deptBuckets,
   }, [filtered]);
 
   const [search, setSearch] = useState('');
+  const [page,   setPage]   = useState(1);
+  const PAGE_SIZE = 50;
 
   // Only working employees under retirement age (58) — 58+ appear in Retirement Alerts
   const tableRows = useMemo(() => {
@@ -234,6 +236,13 @@ function OverviewTab({ emps, filtered, rets, loading, ageBuckets, deptBuckets,
       return true;
     });
   }, [filtered, search]);
+
+  // Reset to page 1 whenever the result set changes
+  useEffect(() => { setPage(1); }, [search, filtered.length]);
+
+  const totalPages = Math.max(1, Math.ceil(tableRows.length / PAGE_SIZE));
+  const safePage   = Math.min(page, totalPages);
+  const pageRows   = tableRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   return (
     <div>
@@ -342,7 +351,7 @@ function OverviewTab({ emps, filtered, rets, loading, ageBuckets, deptBuckets,
                 {tableRows.length === 0 && (
                   <tr><td colSpan={20} className="p-6 text-center text-sm" style={{ color: 'var(--muted)' }}>No working employees match the current filters.</td></tr>
                 )}
-                {tableRows.map(e => {
+                {pageRows.map(e => {
                   const age = calcAge(e.DOB);
                   return (
                     <tr key={e.EMP_CODE} className="border-t hover:bg-black/5 dark:hover:bg-white/5 transition" style={{ borderColor: 'var(--border)' }}>
@@ -360,6 +369,46 @@ function OverviewTab({ emps, filtered, rets, loading, ageBuckets, deptBuckets,
             </table>
           )}
         </div>
+
+        {/* ── Pagination ─────────────────────────────────────────────────── */}
+        {tableRows.length > PAGE_SIZE && (
+          <div className="flex items-center justify-between flex-wrap gap-3 mt-3 pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
+            <span className="text-xs" style={{ color: 'var(--muted)' }}>
+              Showing {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, tableRows.length)} of {tableRows.length}
+            </span>
+            <div className="flex items-center gap-1">
+              <button className="btn-ghost px-2 py-1 text-sm" disabled={safePage <= 1}
+                onClick={() => setPage(1)} style={{ opacity: safePage <= 1 ? 0.4 : 1 }}>«</button>
+              <button className="btn-ghost px-2 py-1 text-sm" disabled={safePage <= 1}
+                onClick={() => setPage(p => Math.max(1, p - 1))} style={{ opacity: safePage <= 1 ? 0.4 : 1 }}>‹ Prev</button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(n => n === 1 || n === totalPages || Math.abs(n - safePage) <= 2)
+                .reduce((acc, n, i, arr) => {
+                  if (i > 0 && n - arr[i - 1] > 1) acc.push('…');
+                  acc.push(n);
+                  return acc;
+                }, [])
+                .map((n, i) => n === '…' ? (
+                  <span key={`gap-${i}`} className="px-1 text-xs" style={{ color: 'var(--muted)' }}>…</span>
+                ) : (
+                  <button key={n} onClick={() => setPage(n)}
+                    className="px-2.5 py-1 rounded-lg text-sm font-semibold"
+                    style={{
+                      background: n === safePage ? 'var(--brand)' : 'transparent',
+                      color:      n === safePage ? '#fff' : 'var(--text)',
+                      border: `1px solid ${n === safePage ? 'var(--brand)' : 'var(--border)'}`,
+                      cursor: 'pointer',
+                    }}>
+                    {n}
+                  </button>
+                ))}
+              <button className="btn-ghost px-2 py-1 text-sm" disabled={safePage >= totalPages}
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))} style={{ opacity: safePage >= totalPages ? 0.4 : 1 }}>Next ›</button>
+              <button className="btn-ghost px-2 py-1 text-sm" disabled={safePage >= totalPages}
+                onClick={() => setPage(totalPages)} style={{ opacity: safePage >= totalPages ? 0.4 : 1 }}>»</button>
+            </div>
+          </div>
+        )}
       </SectionCard>
 
     </div>

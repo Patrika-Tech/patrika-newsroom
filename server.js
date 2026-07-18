@@ -135,6 +135,28 @@ delayReasonReport.register();
   console.log('[chartbeat-cron] Registered — daily 11:55 PM IST');
 })();
 
+// ── Weekly Review reminder — Saturday 10:00 AM IST (04:30 UTC) ────────────────
+(() => {
+  const cron            = require('node-cron');
+  const { sendMessage } = require('./api/_lib/telegram');
+  cron.schedule('30 4 * * 6', async () => {
+    try {
+      const chatId = process.env.TELEGRAM_CHAT_ID;
+      if (!chatId) return;
+      await sendMessage(chatId,
+        '📋 <b>Weekly Plan & Review Due</b>\n\n' +
+        'It\'s Saturday — weekly newsroom review time:\n' +
+        '1️⃣ REs: submit your branch action plan for next week\n' +
+        '2️⃣ State Heads: review &amp; grade submitted plans\n' +
+        '3️⃣ Check employee performance — stories, visits, QC\n' +
+        '4️⃣ Follow up on last week\'s pending action items\n\n' +
+        '👉 Open <b>Task Management → Weekly Review</b> in the portal.');
+      console.log('[weekly-review] Saturday reminder sent');
+    } catch (e) { console.error('[weekly-review] reminder failed:', e.message); }
+  }, { timezone: 'UTC' });
+  console.log('[weekly-review] Cron registered — Saturday 10:00 AM IST');
+})();
+
 // ── Body parsing ──────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -275,6 +297,7 @@ app.all('/api/task-groups',           h('./api/task-groups'));
 app.all('/api/tasks/assignees',       h('./api/tasks/assignees'));   // before /:id
 app.all('/api/tasks/comments',        h('./api/tasks/comments'));
 app.all('/api/tasks/report',          h('./api/tasks/report'));
+app.all('/api/tasks/weekly-review',   h('./api/tasks/weekly-review'));
 app.all('/api/tasks/:id',             h('./api/tasks/[id]'));
 app.all('/api/tasks',                 h('./api/tasks'));
 

@@ -17,8 +17,8 @@ export const STATES         = ['All'];
 // ── Nav access per role ────────────────────────────────────────────────────────
 const ACCESS = {
   'Admin':           'all',
-  'State Head':      ['home', 'production', 'pages', 'field', 'hr', 'alerts', 'reports', 'tasks', 'correspondent', 'settings', 'feedback'],
-  'Regional Editor': ['home', 'production', 'pages', 'field', 'hr', 'alerts', 'reports', 'tasks', 'correspondent', 'settings', 'feedback'],
+  'State Head':      ['home', 'production', 'pages', 'hr', 'alerts', 'reports', 'tasks', 'correspondent', 'settings', 'feedback'],
+  'Regional Editor': ['home', 'production', 'pages', 'hr', 'alerts', 'reports', 'tasks', 'correspondent', 'settings', 'feedback'],
   'Legal':           ['legal', 'settings'],
   // Digital team: access only their own tracker tab
   'Digital User':    ['digital_tracker'],
