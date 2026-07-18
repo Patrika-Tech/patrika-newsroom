@@ -161,13 +161,6 @@ export default function Dashboard() {
           icon={AlertCircle}
         />
         <KPICard
-          label="Editions Tracked"
-          value={k.editions ?? '—'}
-          sub={`${k.onTime ?? 0} on time`}
-          accent="#C9A227"
-          icon={Newspaper}
-        />
-        <KPICard
           label="Delayed Editions"
           value={k.delayed ?? '—'}
           sub="over schedule"
