@@ -106,6 +106,16 @@ module.exports = async function handler(req, res) {
     const qcExtra    = qcWhere.length    ? ' AND ' + qcWhere.join(' AND ')    : '';
 
     // ── Run all queries in parallel ───────────────────────────────────────────
+    // Reporter target query params (built separately to use qualified column names in the JOIN)
+    const repWhere  = ['(u.is_emp_working = 1 OR u.Status = \'Working\' OR u.Status = \'Active\')',
+      `(LOWER(TRIM(u.Story_Type)) LIKE '%reporter%'
+         OR LOWER(TRIM(u.Story_Type)) = 'stringer'
+         OR (LOWER(TRIM(u.Story_Type)) = 'ne'
+             AND (LOWER(TRIM(u.profile)) LIKE '%reporter%' OR LOWER(TRIM(u.profile)) = 'stringer')))`];
+    const repParams = [ydayStr];
+    if (filterState)  { repWhere.push('u.State = ?');  repParams.push(filterState);  }
+    if (filterBranch) { repWhere.push('u.Branch = ?'); repParams.push(filterBranch); }
+
     const [
       empRows, empProfiles,
       storiesYday, storyTrend,
@@ -113,6 +123,7 @@ module.exports = async function handler(req, res) {
       visitsToday,
       legalRows, alertRows,
       schedRows, rajRows, mpcgRows,
+      reporterTarget,
     ] = await Promise.all([
 
       // 1. Active employee count
@@ -182,6 +193,16 @@ module.exports = async function handler(req, res) {
              FROM gmg_mpcg
              WHERE input_file LIKE ? AND date_time_pdf IS NOT NULL
              GROUP BY code`, [todayGmgPrefix]).catch(() => []),
+
+      // 13. Reporter 5-story target — yesterday
+      query(`SELECT
+               COUNT(DISTINCT u.pan_no) AS total_reporters,
+               COUNT(DISTINCT CASE WHEN COALESCE(d.No_Story, 0) >= 5 THEN u.pan_no END) AS hit_target
+             FROM \`${TABLE}\` u
+             LEFT JOIN daily_achievment_count_ecms d
+               ON u.pan_no = d.Pan_no AND d.entrydate = ?
+             WHERE ${repWhere.join(' AND ')}`,
+             repParams).catch(() => [{}]),
     ]);
 
     // ── Compute edition delays ────────────────────────────────────────────────
@@ -267,11 +288,13 @@ module.exports = async function handler(req, res) {
 
     return res.json({
       kpis: {
-        employees:    Number(empRows[0]?.cnt    || 0),
-        stories:      Number(storiesYday[0]?.stories || 0),
-        reporters:    Number(storiesYday[0]?.reporters || 0),
-        photos:       Number(storiesYday[0]?.photos  || 0),
-        visits:       Number(visitsToday[0]?.cnt || 0),
+        employees:       Number(empRows[0]?.cnt    || 0),
+        stories:         Number(storiesYday[0]?.stories || 0),
+        reporters:       Number(storiesYday[0]?.reporters || 0),
+        photos:          Number(storiesYday[0]?.photos  || 0),
+        reporterHit:     Number(reporterTarget[0]?.hit_target    || 0),
+        totalReporters:  Number(reporterTarget[0]?.total_reporters || 0),
+        visits:          Number(visitsToday[0]?.cnt || 0),
         qcMistakes:   Number(qcToday[0]?.mistakes || 0),
         legal:        Number(legalRows[0]?.cnt || 0),
         alerts:       Number(alertRows[0]?.cnt || 0),

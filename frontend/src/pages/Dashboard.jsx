@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import {
   FileText, Clock, AlertCircle, MapPin, Scale, Users,
-  Bell, Camera, Newspaper, TrendingUp,
+  Bell, Camera, Newspaper, TrendingUp, PenLine,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.jsx';
 import { api } from '../api/client.js';
@@ -140,10 +140,11 @@ export default function Dashboard() {
       {/* ── KPI Grid ─────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         <KPICard
-          label="Stories Yesterday"
-          value={k.stories ?? '—'}
-          sub={`by ${k.reporters ?? 0} reporters`}
-          icon={FileText}
+          label="Target Hit (5 Stories)"
+          value={k.totalReporters ? `${k.reporterHit}/${k.totalReporters}` : '—'}
+          sub="reporters · yesterday"
+          accent={k.reporterHit > 0 && k.reporterHit >= k.totalReporters * 0.5 ? '#16a34a' : '#d71920'}
+          icon={PenLine}
         />
         <KPICard
           label="Field Visits"
