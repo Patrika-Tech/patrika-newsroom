@@ -167,13 +167,6 @@ export default function Dashboard() {
           accent={k.delayed > 0 ? '#d71920' : '#16a34a'}
           icon={Clock}
         />
-        <KPICard
-          label="Unread Alerts"
-          value={k.alerts ?? '—'}
-          sub="pending"
-          accent={k.alerts > 0 ? '#e8843a' : '#16a34a'}
-          icon={Bell}
-        />
       </div>
 
       {/* ── Row 1: Trend + Profile Pie ────────────────────────────────────────── */}
