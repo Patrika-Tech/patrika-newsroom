@@ -226,6 +226,7 @@ app.all('/api/legal-notices',         h('./api/legal-notices'));
 app.use('/uploads/legal-notices', require('express').static(require('path').join(__dirname, 'uploads', 'legal-notices')));
 
 // ── Alerts ────────────────────────────────────────────────────────────────────
+app.all('/api/alerts/live',           h('./api/alerts/live'));
 app.all('/api/alerts/send-telegram',  h('./api/alerts/send-telegram'));
 app.all('/api/alerts/telegram-config',h('./api/alerts/telegram-config'));
 app.all('/api/alerts/telegram-test',  h('./api/alerts/telegram-test'));

@@ -113,6 +113,7 @@ export const api = {
   saveLegalCase:  (caseData) => request('/legal', { method: 'POST', body: JSON.stringify(caseData) }),
   deleteLegalCase:(id)       => request(`/legal/${id}`, { method: 'DELETE' }),
   alerts:       ()        => withFallback('/alerts',                          mock.alerts),
+  alertsLive:   ()        => request('/alerts/live'),
   reports:      ()        => withFallback('/reports', { reports: [] }),
   generateReport: (type, params = {}) => {
     const p = new URLSearchParams({ type, ...params });

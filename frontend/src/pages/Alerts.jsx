@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Bell, MessageCircle, Mail, Smartphone, Send,
   CheckCircle2, XCircle, Loader2, Settings2, ChevronDown, ChevronUp,
-  Users, Search, X,
+  Users, Search, X, RefreshCw, ExternalLink,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.jsx';
 import { api } from '../api/client.js';
@@ -30,9 +31,21 @@ function useTgStatus() {
 
 export default function Alerts() {
   const { t } = useApp();
+  const navigate = useNavigate();
 
   // ── State ──────────────────────────────────────────────────────────────────
-  const [alerts,   setAlerts]   = useState([]);
+  const [alerts,        setAlerts]        = useState([]);
+  const [alertsLoading, setAlertsLoading] = useState(true);
+  const [alertsAt,      setAlertsAt]      = useState(null);
+  const [sevFilter,     setSevFilter]     = useState('all');
+
+  const loadAlerts = useCallback(() => {
+    setAlertsLoading(true);
+    api.alertsLive()
+      .then(r => { setAlerts(r.alerts || []); setAlertsAt(r.generatedAt); })
+      .catch(() => setAlerts([]))
+      .finally(() => setAlertsLoading(false));
+  }, []);
   const [tgConfig, setTgConfig] = useState({ configured: false, chat_id: '' });
   const [tgLogs,   setTgLogs]   = useState([]);
 
@@ -68,7 +81,7 @@ export default function Alerts() {
 
   // ── Load data on mount ─────────────────────────────────────────────────────
   useEffect(() => {
-    api.alerts().then(setAlerts);
+    loadAlerts();
     api.telegramConfig().then((cfg) => {
       setTgConfig(cfg);
       setChatIdInput(cfg.chat_id || '');
@@ -436,22 +449,93 @@ SMTP_FROM=Patrika Newsroom <you@gmail.com>   # optional`}</pre>
         )}
       </SectionCard>
 
-      {/* ── Live Alerts ──────────────────────────────────────────────────────── */}
-      <SectionCard title={<span className="flex items-center gap-1.5"><Bell size={15} /> Live Alerts</span>}>
-        <div className="space-y-2">
-          {alerts.map((a) => (
-            <div key={a.id} className="flex items-start gap-3 rounded-lg p-3" style={{ background: 'var(--bg)' }}>
-              <Badge tone={a.sev === 'high' ? 'high' : a.sev === 'med' ? 'med' : 'low'}>{a.type}</Badge>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium">{a.text}</div>
-                <div className="mt-0.5 text-xs" style={{ color: 'var(--muted)' }}>{a.time}{a.edition ? ` · ${a.edition}` : ''}</div>
-              </div>
-              <div className="flex-shrink-0 pt-0.5"><TgButton alert={a} /></div>
-            </div>
+      {/* ── Live Alerts (computed from real data) ────────────────────────────── */}
+      <SectionCard title={
+        <span className="flex items-center gap-2 flex-wrap">
+          <Bell size={15} /> Alert Center
+          {!alertsLoading && (
+            <>
+              {['high', 'med', 'low'].map(s => {
+                const n = alerts.filter(a => a.sev === s).length;
+                if (!n) return null;
+                return (
+                  <span key={s} className="text-xs font-bold px-2 py-0.5 rounded-full"
+                    style={{
+                      background: s === 'high' ? '#fee2e2' : s === 'med' ? '#fef3c7' : '#dcfce7',
+                      color:      s === 'high' ? '#b91c1c' : s === 'med' ? '#92400e' : '#166534',
+                    }}>
+                    {SEV_EMOJI[s]} {n}
+                  </span>
+                );
+              })}
+            </>
+          )}
+        </span>
+      } action={
+        <div className="flex items-center gap-2">
+          {alertsAt && (
+            <span className="text-xs" style={{ color: 'var(--muted)' }}>
+              updated {String(alertsAt).slice(11, 16)} UTC
+            </span>
+          )}
+          <button className="btn-ghost p-1.5" title="Refresh" onClick={loadAlerts}>
+            <RefreshCw size={14} className={alertsLoading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+      }>
+        {/* Severity filter */}
+        <div className="flex gap-2 mb-3 flex-wrap">
+          {[['all', 'All'], ['high', '🔴 Critical'], ['med', '🟡 Warning'], ['low', '🟢 Info']].map(([key, label]) => (
+            <button key={key} onClick={() => setSevFilter(key)}
+              className="px-3 py-1 rounded-full text-xs font-semibold transition"
+              style={{
+                background: sevFilter === key ? 'var(--brand)' : 'var(--bg)',
+                color:      sevFilter === key ? '#fff' : 'var(--text)',
+                border: '1px solid var(--border)', cursor: 'pointer',
+              }}>
+              {label}
+            </button>
           ))}
         </div>
+
+        {alertsLoading ? (
+          <div className="flex items-center justify-center py-10 gap-2" style={{ color: 'var(--muted)' }}>
+            <Loader2 size={18} className="animate-spin" /> Scanning newsroom data…
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {alerts.filter(a => sevFilter === 'all' || a.sev === sevFilter).map((a) => (
+              <div key={a.id} className="flex items-start gap-3 rounded-lg p-3"
+                style={{
+                  background: 'var(--bg)',
+                  borderLeft: `4px solid ${a.sev === 'high' ? '#dc2626' : a.sev === 'med' ? '#f59e0b' : '#16a34a'}`,
+                }}>
+                <Badge tone={a.sev === 'high' ? 'high' : a.sev === 'med' ? 'med' : 'low'}>{a.type}</Badge>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium">{a.text}</div>
+                  <div className="mt-0.5 text-xs" style={{ color: 'var(--muted)' }}>{a.time} IST</div>
+                </div>
+                <div className="flex-shrink-0 flex items-center gap-1.5 pt-0.5">
+                  {a.link && a.link !== '/' && (
+                    <button
+                      title="Open related tab"
+                      onClick={() => navigate(a.link)}
+                      className="flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold transition hover:opacity-75"
+                      style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--brand)' }}>
+                      <ExternalLink size={11} /> Open
+                    </button>
+                  )}
+                  <TgButton alert={a} />
+                </div>
+              </div>
+            ))}
+            {alerts.filter(a => sevFilter === 'all' || a.sev === sevFilter).length === 0 && (
+              <p className="py-8 text-center text-sm" style={{ color: 'var(--muted)' }}>No alerts in this category.</p>
+            )}
+          </div>
+        )}
         <p className="mt-3 text-xs" style={{ color: 'var(--muted)' }}>
-          Triggers: page delay · legal risk · fake-news flag · retirement reminder · missed trending story.
+          Live checks: edition delays (30+ min) · silent branches (zero stories) · overdue tasks · QC spikes · plans awaiting review · open high-priority feedback · retirements within 60 days.
         </p>
       </SectionCard>
 
