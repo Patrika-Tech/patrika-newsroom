@@ -612,9 +612,10 @@ export default function Production() {
     });
   }, [data, search]);
 
-  // For chart — top 30 by delay (most delayed first), sort ascending for display
+  // For chart — only genuinely delayed editions (≥5 min), top 40, ascending for display
   const chartData = useMemo(() =>
     [...editions]
+      .filter(e => e.delay_minutes >= 5)
       .sort((a, b) => b.delay_minutes - a.delay_minutes)
       .slice(0, 40)
       .reverse(),

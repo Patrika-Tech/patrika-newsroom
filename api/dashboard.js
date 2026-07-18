@@ -69,7 +69,8 @@ module.exports = async function handler(req, res) {
     const toIST    = ms => new Date(ms + 5.5 * 3600000).toISOString().slice(0, 10);
     const todayStr = toIST(Date.now());
     const ydayStr  = toIST(Date.now() - 864e5);
-    const trend7Str= toIST(Date.now() - 7 * 864e5);
+    const trend7Str = toIST(Date.now() - 7  * 864e5);
+    const trend15Str= toIST(Date.now() - 15 * 864e5);
     // GMG file names begin with the publish date as ddmmyyyy (e.g. "20062026-…").
     // Match that prefix with LIKE so the existing index on input_file can range-seek,
     // instead of STR_TO_DATE/REGEXP on the column (which forced a full table scan).
@@ -124,6 +125,7 @@ module.exports = async function handler(req, res) {
       legalRows, alertRows,
       schedRows, rajRows, mpcgRows,
       reporterTarget,
+      qcTop5,
     ] = await Promise.all([
 
       // 1. Active employee count
@@ -203,6 +205,29 @@ module.exports = async function handler(req, res) {
                ON u.pan_no = d.Pan_no AND d.entrydate = ?
              WHERE ${repWhere.join(' AND ')}`,
              repParams).catch(() => [{}]),
+
+      // 14. Top 5 persons responsible for QC mistakes — last 15 days
+      // responsible_1/responsible_2 hold user.id; each qc_review row counts as 1 mistake per responsible person
+      query(`SELECT u.EMPNAME AS name, u.Branch AS branch, u.Story_Type AS story_type,
+                    SUM(combined.cnt) AS total_mistakes
+             FROM (
+               SELECT CAST(responsible_1 AS UNSIGNED) AS uid, COUNT(*) AS cnt
+               FROM qc_review
+               WHERE CAST(responsible_1 AS UNSIGNED) > 0
+                 AND entrydate BETWEEN ? AND ?${qcExtra}
+               GROUP BY CAST(responsible_1 AS UNSIGNED)
+               UNION ALL
+               SELECT CAST(responsible_2 AS UNSIGNED) AS uid, COUNT(*) AS cnt
+               FROM qc_review
+               WHERE CAST(responsible_2 AS UNSIGNED) > 0
+                 AND entrydate BETWEEN ? AND ?${qcExtra}
+               GROUP BY CAST(responsible_2 AS UNSIGNED)
+             ) combined
+             JOIN \`${TABLE}\` u ON u.id = combined.uid
+             GROUP BY u.id, u.EMPNAME, u.Branch, u.Story_Type
+             ORDER BY total_mistakes DESC
+             LIMIT 5`,
+             [trend15Str, ydayStr, ...qcParams, trend15Str, ydayStr, ...qcParams]).catch(e => { console.error('[dashboard] qcTop5:', e.message); return []; }),
     ]);
 
     // ── Compute edition delays ────────────────────────────────────────────────
@@ -286,7 +311,16 @@ module.exports = async function handler(req, res) {
     const delayedCount = editionDelays.filter(e => e.status !== 'ontime').length;
     const onTimeCount  = editionDelays.filter(e => e.status === 'ontime').length;
 
+    const qcTop5Out = (qcTop5 || []).map(r => ({
+      name:          r.name || 'Unknown',
+      branch:        r.branch || '',
+      story_type:    r.story_type || '',
+      total_mistakes: Number(r.total_mistakes || 0),
+    }));
+
+
     return res.json({
+      qcTop5: qcTop5Out,
       kpis: {
         employees:       Number(empRows[0]?.cnt    || 0),
         stories:         Number(storiesYday[0]?.stories || 0),

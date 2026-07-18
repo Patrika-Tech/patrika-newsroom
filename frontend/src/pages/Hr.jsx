@@ -1396,6 +1396,7 @@ function AdminTab({ emps, canEditHr }) {
   const [loading, setLoading] = useState(true);
   const [sanctionEdit, setSanctionEdit] = useState(null); // {profile, count}
   const [saving,  setSaving]  = useState(false);
+  const [retView, setRetView] = useState('within1yr'); // which retirement bucket list is shown
 
   const load = useCallback(() => {
     setLoading(true);
@@ -1418,8 +1419,6 @@ function AdminTab({ emps, canEditHr }) {
     setSaving(false);
   };
 
-  const inactive = useMemo(() => emps.filter(e => !(e.is_emp_working == 1 || e.Status === 'Active')), [emps]);
-
   const downloadProfiles = () => {
     if (!stats?.profiles) return;
     const data = stats.profiles.map(p => ({
@@ -1427,7 +1426,6 @@ function AdminTab({ emps, canEditHr }) {
       'Available (Working)':   p.available,
       'Sanctioned':            p.sanctionedCount ?? 'Not Set',
       'Vacant':                p.vacant ?? 'N/A',
-      'Avg Salary':            p.avgSalary ? `₹${p.avgSalary.toLocaleString('en-IN')}` : '',
     }));
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
@@ -1444,22 +1442,30 @@ function AdminTab({ emps, canEditHr }) {
   }
 
   const ret = stats?.retBuckets || {};
+  const RET_VIEWS = {
+    within1yr: { label: 'Retiring Within 1 Year', color: '#d71920', list: ret.within1yr || [] },
+    yr1to3:    { label: 'Retiring in 1-3 yrs',    color: '#f97316', list: ret.yr1to3    || [] },
+    yr3to5:    { label: 'Retiring in 3-5 yrs',    color: '#C9A227', list: ret.yr3to5    || [] },
+  };
+  const activeRet = RET_VIEWS[retView];
 
   return (
     <div className="space-y-4">
       {/* Retirement Overview */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <RetTile label="Retiring This Year"  count={(ret.overdue?.length || 0) + (ret.within1yr?.length || 0)} color="#d71920" />
-        <RetTile label="Retiring in 1-3 yrs" count={ret.yr1to3?.length || 0}   color="#f97316" />
-        <RetTile label="Retiring in 3-5 yrs" count={ret.yr3to5?.length || 0}   color="#C9A227" />
-        <RetTile label="Left / Inactive"      count={stats?.totalInactive || inactive.length} color="#6b7280" />
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        {Object.entries(RET_VIEWS).map(([key, v]) => (
+          <RetTile key={key} label={v.label} count={v.list.length} color={v.color}
+            active={retView === key} onClick={() => setRetView(key)} />
+        ))}
       </div>
 
-      {/* Retiring soon detail */}
-      {(ret.overdue?.length || ret.within1yr?.length) > 0 && (
-        <SectionCard title="Retiring Within 1 Year">
+      {/* Retiring detail — bucket selected by tile click */}
+      <SectionCard title={activeRet.label}>
+        {activeRet.list.length === 0 ? (
+          <p className="py-6 text-center text-sm" style={{ color: 'var(--muted)' }}>No employees in this window</p>
+        ) : (
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {[...(ret.overdue || []), ...(ret.within1yr || [])].map(e => (
+            {[...activeRet.list].sort((a, b) => (a.retireOn || '').localeCompare(b.retireOn || '')).map(e => (
               <div key={e.EMP_CODE} className="rounded-lg p-3" style={{ background: 'var(--bg)' }}>
                 <div className="text-sm font-semibold">{e.EMPNAME}</div>
                 <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>
@@ -1468,8 +1474,8 @@ function AdminTab({ emps, canEditHr }) {
               </div>
             ))}
           </div>
-        </SectionCard>
-      )}
+        )}
+      </SectionCard>
 
       {/* Age Distribution */}
       {stats?.ageDist && (
@@ -1513,7 +1519,6 @@ function AdminTab({ emps, canEditHr }) {
                 <th className="p-2 text-right">Available</th>
                 <th className="p-2 text-right">Sanctioned</th>
                 <th className="p-2 text-right">Vacant</th>
-                <th className="p-2 text-right">Avg Salary</th>
               </tr>
             </thead>
             <tbody>
@@ -1541,42 +1546,6 @@ function AdminTab({ emps, canEditHr }) {
                       </span>
                     ) : '-'}
                   </td>
-                  <td className="p-2 text-right">
-                    {p.avgSalary ? `₹${p.avgSalary.toLocaleString('en-IN')}` : '-'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </SectionCard>
-
-      {/* Left / Inactive Employees */}
-      <SectionCard title={`Left / Inactive Employees (${inactive.length})`}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left" style={{ color: 'var(--muted)' }}>
-                <th className="p-2">Emp Code</th>
-                <th className="p-2">Name</th>
-                <th className="p-2">Story Type</th>
-                <th className="p-2">Department</th>
-                <th className="p-2">Branch</th>
-                <th className="p-2">DOJ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {inactive.length === 0 && (
-                <tr><td colSpan={6} className="p-6 text-center" style={{ color: 'var(--muted)' }}>No inactive employees found.</td></tr>
-              )}
-              {inactive.map(e => (
-                <tr key={e.EMP_CODE} className="border-t hover:bg-black/5 dark:hover:bg-white/5 transition" style={{ borderColor: 'var(--border)' }}>
-                  <td className="p-2 font-mono text-xs">{e.EMP_CODE}</td>
-                  <td className="p-2 font-semibold">{e.EMPNAME}</td>
-                  <td className="p-2">{e.Story_Type || e.emp_designation || '-'}</td>
-                  <td className="p-2">{e.emp_deptt}</td>
-                  <td className="p-2">{e.Branch}</td>
-                  <td className="p-2">{e.DOJ}</td>
                 </tr>
               ))}
             </tbody>
@@ -1617,12 +1586,16 @@ function AdminTab({ emps, canEditHr }) {
   );
 }
 
-function RetTile({ label, count, color }) {
+function RetTile({ label, count, color, active, onClick }) {
   return (
-    <div className="card p-4">
+    <button onClick={onClick} className="card p-4 text-left transition"
+      style={{
+        cursor: onClick ? 'pointer' : 'default',
+        border: active ? `2px solid ${color}` : '2px solid transparent',
+      }}>
       <div className="text-3xl font-bold" style={{ fontFamily: 'Roboto, sans-serif', color }}>{count}</div>
       <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>{label}</div>
-    </div>
+    </button>
   );
 }
 

@@ -64,7 +64,6 @@ function Tile({ icon: Icon, label, value, sub, color = '#3b82f6', onClick, activ
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 const TABS = [
-  { id: 'overview',  label: 'Overview',       icon: TrendingUp  },
   { id: 'news',      label: 'News Categories', icon: Newspaper   },
   { id: 'qc',        label: 'QC Review',       icon: CheckSquare },
   { id: 'visits',    label: 'Field Visits',    icon: MapPin      },
@@ -856,7 +855,7 @@ export default function PageMonitoring() {
   const [date,    setDate]    = useState(yesterday());
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(true);
-  const [tab,     setTab]     = useState('overview');
+  const [tab,     setTab]     = useState('news');
 
   const load = (d, st, br) => {
     setLoading(true);
@@ -946,7 +945,6 @@ export default function PageMonitoring() {
         </div>
       ) : (
         <>
-          {tab === 'overview' && <OverviewTab data={data} />}
           {tab === 'news'     && <NewsTab     data={data} />}
           {tab === 'qc'       && <QCTab       data={data} />}
           {tab === 'visits'   && <VisitsTab   data={data} date={date} />}

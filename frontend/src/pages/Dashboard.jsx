@@ -36,41 +36,75 @@ function cleanTitle(t) {
   return (t || '').replace(/\]\]>.*$/, '').replace(/<!\[CDATA\[/g, '').trim();
 }
 
-function WireTicker({ feeds }) {
+function WireTicker({ feeds, branch }) {
+  const [activeTab, setActiveTab] = useState('national');
   if (!feeds.length) return null;
+
+  const level    = WIRE_LEVELS.find(l => l.key === activeTab);
+  const articles = feeds
+    .filter(f => level.types.includes(f.type))
+    .flatMap(f => (f.articles || []).map(a => ({ ...a, feedColor: f.color, feedLabel: f.label, title: cleanTitle(a.title) })));
+
+  const localBranch = branch && branch !== 'All' ? branch : null;
+  const items    = articles.length ? [...articles, ...articles] : [];
+  const duration = Math.max(40, articles.length * 3);
+
   return (
-    <div className="card overflow-hidden mb-4" style={{ borderLeft: '4px solid #d71920' }}>
+    <div className="card overflow-hidden mb-4" style={{ borderLeft: `4px solid ${level.color}`, transition: 'border-color .3s' }}>
       <style>{TICKER_STYLE}</style>
-      {WIRE_LEVELS.map(({ key, label, types, color }) => {
-        const articles = feeds
-          .filter(f => types.includes(f.type))
-          .flatMap(f => (f.articles || []).map(a => ({ ...a, color: f.color, label: f.label, title: cleanTitle(a.title) })));
-        if (!articles.length) return null;
-        const items    = [...articles, ...articles];
-        const duration = Math.max(40, articles.length * 3);
-        return (
-          <div key={key} className="flex items-center" style={{ borderTop: key !== 'national' ? '1px solid var(--border)' : 'none', height: 36 }}>
-            <div className="flex-shrink-0 flex items-center justify-center text-xs font-bold whitespace-nowrap"
-              style={{ background: color, color: '#fff', width: 80, height: '100%', letterSpacing: '.06em' }}>
-              {label}
+
+      {/* ── Toggle header ─────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b" style={{ borderColor: 'var(--border)' }}>
+        <span className="text-xs font-bold tracking-widest flex-shrink-0" style={{ color: 'var(--muted)' }}>LIVE NEWS</span>
+        <div className="flex gap-1.5">
+          {WIRE_LEVELS.map(({ key, label, color }) => {
+            const isActive = activeTab === key;
+            const pill = key === 'local' && localBranch ? `Local · ${localBranch}` : label;
+            return (
+              <button key={key} onClick={() => setActiveTab(key)}
+                className="px-3 py-0.5 rounded-full text-xs font-semibold transition-all"
+                style={{
+                  background: isActive ? color : 'transparent',
+                  color: isActive ? '#fff' : color,
+                  border: `1.5px solid ${color}`,
+                  cursor: 'pointer',
+                }}>
+                {pill}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Ticker row ────────────────────────────────────────────────────── */}
+      <div className="flex items-center" style={{ height: 36 }}>
+        <div className="flex-shrink-0 flex items-center justify-center text-xs font-bold whitespace-nowrap"
+          style={{ background: level.color, color: '#fff', width: 80, height: '100%', letterSpacing: '.06em', transition: 'background .3s' }}>
+          {activeTab === 'local' && localBranch ? localBranch.slice(0, 9) : level.label}
+        </div>
+        <div className="flex-1 overflow-hidden relative" style={{ height: 36 }}>
+          {articles.length === 0 ? (
+            <span className="absolute inset-0 flex items-center px-4 text-xs" style={{ color: 'var(--muted)' }}>
+              {activeTab === 'local'
+                ? `No local feeds configured${localBranch ? ` for ${localBranch}` : ''}. Add feeds with type "local" in api/editorial/feeds.js.`
+                : 'No articles available right now.'}
+            </span>
+          ) : (
+            <div key={activeTab} className="wire-track absolute top-0 left-0 h-full items-center"
+              style={{ animationDuration: `${duration}s` }}>
+              {items.map((art, i) => (
+                <a key={i} href={art.link || '#'} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-4 text-sm whitespace-nowrap hover:underline"
+                  style={{ color: 'var(--text)', height: 36 }}>
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: art.feedColor }} />
+                  <span className="text-xs font-semibold" style={{ color: art.feedColor }}>{art.feedLabel}</span>
+                  {art.title}
+                </a>
+              ))}
             </div>
-            <div className="flex-1 overflow-hidden relative" style={{ height: 36 }}>
-              <div className="wire-track absolute top-0 left-0 h-full items-center"
-                style={{ animationDuration: `${duration}s` }}>
-                {items.map((art, i) => (
-                  <a key={i} href={art.link || '#'} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-2 px-4 text-sm whitespace-nowrap hover:underline"
-                    style={{ color: 'var(--text)', height: 36 }}>
-                    <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: art.color }} />
-                    <span className="text-xs font-semibold" style={{ color: art.color }}>{art.label}</span>
-                    {art.title}
-                  </a>
-                ))}
-              </div>
-            </div>
-          </div>
-        );
-      })}
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -135,13 +169,14 @@ export default function Dashboard() {
   const trend7days    = d.trend7days   || [];
   const profilePie    = d.profilePie   || [];
   const editionDelays = d.editionDelays|| [];
+  const qcTop5        = d.qcTop5       || [];
 
   const subtitle = [state !== 'All' ? state : null, branch !== 'All' ? branch : null]
     .filter(Boolean).join(' › ') || 'All States';
 
   return (
     <div>
-      <WireTicker feeds={feeds} />
+      <WireTicker feeds={feeds} branch={branch} />
       <PageHeader title={t('nav.home')} subtitle={subtitle} />
 
       {/* ── KPI Grid ─────────────────────────────────────────────────────────── */}
@@ -220,6 +255,46 @@ export default function Dashboard() {
           )}
         </SectionCard>
 
+      </div>
+
+      {/* ── QC Top 5 Responsible — Last 7 Days ─────────────────────────────── */}
+      <div className="mt-4">
+        <SectionCard title="Top 5 — QC Mistakes (Last 15 Days)">
+          {qcTop5.length === 0 ? (
+            <p className="py-6 text-center text-sm" style={{ color: 'var(--muted)' }}>
+              No responsible data recorded for the last 15 days
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {qcTop5.map((p, i) => {
+                const maxM = qcTop5[0].total_mistakes || 1;
+                const pct  = Math.round((p.total_mistakes / maxM) * 100);
+                const rankColor = i === 0 ? '#dc2626' : i === 1 ? '#ea580c' : i === 2 ? '#ca8a04' : 'var(--muted)';
+                return (
+                  <div key={i} className="flex items-center gap-3">
+                    <span className="text-xs font-bold w-4 flex-shrink-0 text-right" style={{ color: rankColor }}>{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-sm font-semibold truncate">{p.name}</span>
+                        <span className="text-xs font-bold tabular-nums flex-shrink-0 ml-2" style={{ color: '#dc2626' }}>
+                          {p.total_mistakes} mistakes
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-1.5 rounded-full" style={{ background: 'var(--border)' }}>
+                          <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, background: rankColor }} />
+                        </div>
+                        <span className="text-xs flex-shrink-0" style={{ color: 'var(--muted)' }}>
+                          {p.branch}{p.story_type ? ` · ${p.story_type}` : ''}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </SectionCard>
       </div>
 
       {/* ── Top 10 Delayed Editions (Last 7 Days) ───────────────────────────── */}
