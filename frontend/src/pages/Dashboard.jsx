@@ -146,13 +146,6 @@ export default function Dashboard() {
           icon={FileText}
         />
         <KPICard
-          label="Photos Published"
-          value={k.photos ?? '—'}
-          sub="yesterday"
-          accent="#3b82f6"
-          icon={Camera}
-        />
-        <KPICard
           label="Field Visits"
           value={k.visits ?? '—'}
           sub="yesterday"
