@@ -111,15 +111,15 @@ export default function Hr() {
 
   // Charts - all use `filtered` so they respond to top-left state/branch selection
   const ageBuckets = useMemo(() => {
-    const b = { '20-29': 0, '30-39': 0, '40-49': 0, '50-59': 0, '60+': 0 };
+    const b = { '20-29': 0, '30-39': 0, '40-49': 0, '50-57': 0, '58+ (Ret.)': 0 };
     filtered.forEach(e => {
       const a = calcAge(e.DOB);
       if (!a) return;
       if (a < 30) b['20-29']++;
       else if (a < 40) b['30-39']++;
       else if (a < 50) b['40-49']++;
-      else if (a < 60) b['50-59']++;
-      else b['60+']++;
+      else if (a < 58) b['50-57']++;
+      else b['58+ (Ret.)']++;
     });
     return Object.entries(b).map(([range, count]) => ({ range, count }));
   }, [filtered]);
@@ -215,11 +215,13 @@ function OverviewTab({ emps, filtered, rets, loading, ageBuckets, deptBuckets,
 
   const [search, setSearch] = useState('');
 
-  // Only working employees - global state/branch already applied via `filtered` prop
+  // Only working employees under retirement age (58) — 58+ appear in Retirement Alerts
   const tableRows = useMemo(() => {
     return filtered.filter(e => {
       const working = e.Status === 'Working' || e.is_emp_working == 1 || e.Status === 'Active';
       if (!working) return false;
+      const age = calcAge(e.DOB);
+      if (age !== null && age >= 58) return false;
       if (search) {
         const q = search.toLowerCase();
         return (
@@ -252,7 +254,7 @@ function OverviewTab({ emps, filtered, rets, loading, ageBuckets, deptBuckets,
               <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12 }} />
               <Bar dataKey="count" radius={[6, 6, 0, 0]}>
                 {ageBuckets.map((b, i) => (
-                  <Cell key={i} fill={b.range === '60+' || b.range === '50-59' ? '#d71920' : '#C9A227'} />
+                  <Cell key={i} fill={b.range === '58+ (Ret.)' ? '#d71920' : '#C9A227'} />
                 ))}
               </Bar>
             </BarChart>
@@ -350,11 +352,7 @@ function OverviewTab({ emps, filtered, rets, loading, ageBuckets, deptBuckets,
                       <td className="p-2">{e.emp_deptt}</td>
                       <td className="p-2">{e.Branch}</td>
                       <td className="p-2">{e.State}</td>
-                      <td className="p-2">
-                        <span style={{ color: age >= 58 ? '#d71920' : 'inherit', fontWeight: age >= 58 ? 700 : 400 }}>
-                          {age ?? '-'}
-                        </span>
-                      </td>
+                      <td className="p-2">{age ?? '-'}</td>
                     </tr>
                   );
                 })}

@@ -29,7 +29,7 @@ function retireDate(dob) {
   if (parts[0].length === 4) d = new Date(`${parts[0]}-${parts[1]}-${parts[2]}`);
   else                        d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
   if (isNaN(d.getTime())) return null;
-  d.setFullYear(d.getFullYear() + 60);
+  d.setFullYear(d.getFullYear() + 58);
   return d;
 }
 
