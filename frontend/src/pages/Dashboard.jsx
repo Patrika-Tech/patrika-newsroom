@@ -26,44 +26,51 @@ const TICKER_STYLE = `
 .wire-track:hover { animation-play-state: paused; }
 `;
 
+const WIRE_LEVELS = [
+  { key: 'national', label: 'National', types: ['news', 'aggregator'], color: '#d71920' },
+  { key: 'state',    label: 'State',    types: ['regional'],           color: '#e8843a' },
+  { key: 'local',    label: 'Local',    types: ['local'],              color: '#16a34a' },
+];
+
+function cleanTitle(t) {
+  return (t || '').replace(/\]\]>.*$/, '').replace(/<!\[CDATA\[/g, '').trim();
+}
+
 function WireTicker({ feeds }) {
-  const allArticles = feeds.flatMap(f =>
-    (f.articles || []).map(a => ({ ...a, color: f.color, label: f.label }))
-  );
-  if (!allArticles.length) return null;
-  const items = [...allArticles, ...allArticles];
-  const duration = Math.max(60, allArticles.length * 3);
+  if (!feeds.length) return null;
   return (
     <div className="card overflow-hidden mb-4" style={{ borderLeft: '4px solid #d71920' }}>
       <style>{TICKER_STYLE}</style>
-      <div className="flex items-center">
-        <div className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-bold whitespace-nowrap"
-          style={{ background: '#d71920', color: '#fff', minWidth: 90 }}>
-          <Newspaper size={12} />
-          LIVE NEWS
-        </div>
-        <div className="flex-1 overflow-hidden relative" style={{ height: 40 }}>
-          <div
-            className="wire-track absolute top-0 left-0 h-full items-center"
-            style={{ animationDuration: `${duration}s` }}
-          >
-            {items.map((art, i) => (
-              <a
-                key={i}
-                href={art.link || '#'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 px-4 text-sm font-medium whitespace-nowrap hover:underline"
-                style={{ color: 'var(--text)', height: 40 }}
-              >
-                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: art.color }} />
-                <span className="text-xs font-bold mr-1" style={{ color: art.color, opacity: 0.8 }}>{art.label}</span>
-                {art.title}
-              </a>
-            ))}
+      {WIRE_LEVELS.map(({ key, label, types, color }) => {
+        const articles = feeds
+          .filter(f => types.includes(f.type))
+          .flatMap(f => (f.articles || []).map(a => ({ ...a, color: f.color, label: f.label, title: cleanTitle(a.title) })));
+        if (!articles.length) return null;
+        const items    = [...articles, ...articles];
+        const duration = Math.max(40, articles.length * 3);
+        return (
+          <div key={key} className="flex items-center" style={{ borderTop: key !== 'national' ? '1px solid var(--border)' : 'none', height: 36 }}>
+            <div className="flex-shrink-0 flex items-center justify-center text-xs font-bold whitespace-nowrap"
+              style={{ background: color, color: '#fff', width: 80, height: '100%', letterSpacing: '.06em' }}>
+              {label}
+            </div>
+            <div className="flex-1 overflow-hidden relative" style={{ height: 36 }}>
+              <div className="wire-track absolute top-0 left-0 h-full items-center"
+                style={{ animationDuration: `${duration}s` }}>
+                {items.map((art, i) => (
+                  <a key={i} href={art.link || '#'} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 text-sm whitespace-nowrap hover:underline"
+                    style={{ color: 'var(--text)', height: 36 }}>
+                    <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: art.color }} />
+                    <span className="text-xs font-semibold" style={{ color: art.color }}>{art.label}</span>
+                    {art.title}
+                  </a>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        );
+      })}
     </div>
   );
 }
