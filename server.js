@@ -179,6 +179,8 @@ app.all('/api/digital/users',         require('./api/digital/users'));   // mult
 app.all('/api/digital/dashboard',     h('./api/digital/dashboard'));
 app.all('/api/digital/targets',       require('./api/digital/targets')); // multer — no h()
 app.all('/api/digital/breaking-news', h('./api/digital/breaking-news'));
+app.get('/api/digital/news-feed',    h('./api/digital/news-feed'));
+app.get('/api/digital/ai-insights',  h('./api/digital/ai-insights'));
 app.get('/api/digital/chartbeat',     h('./api/digital/chartbeat'));
 
 // ── Auth ──────────────────────────────────────────────────────────────────────

@@ -14,6 +14,7 @@ import {
   Award, AlertCircle, CheckCircle, Newspaper, Clock, Globe, ExternalLink,
   CalendarDays, ArrowRight, Timer, LayoutList, Users2, Settings, BarChart3,
   Radio, Activity, SlidersHorizontal,
+  Brain, TrendingDown, Gauge, Flame, Lightbulb, Star, ShieldAlert, Bolt,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.jsx';
 import { api } from '../api/client.js';
@@ -81,16 +82,20 @@ const TABS = [
     grad:  'linear-gradient(135deg,#2563eb,#1d4ed8)',
     lightBg: '#dbeafe',
     lightFg: '#1d4ed8',
+    activeColor: '#60a5fa',
+    activeBg: 'rgba(37,99,235,0.25)',
   },
   {
     key:   'breaking',
     label: 'Breaking News',
-    desc:  'Manual speed tracker & log',
+    desc:  'Live multi-source news feed',
     icon:  Radio,
     color: '#dc2626',
     grad:  'linear-gradient(135deg,#dc2626,#b91c1c)',
     lightBg: '#fee2e2',
     lightFg: '#b91c1c',
+    activeColor: '#f87171',
+    activeBg: 'rgba(239,68,68,0.25)',
   },
   {
     key:   'team-leader',
@@ -101,7 +106,9 @@ const TABS = [
     grad:  'linear-gradient(135deg,#059669,#047857)',
     lightBg: '#d1fae5',
     lightFg: '#047857',
-    teamLeadOk: true,   // visible to team_lead + admin
+    activeColor: '#34d399',
+    activeBg: 'rgba(5,150,105,0.25)',
+    teamLeadOk: true,
     adminOnly: false,
   },
   {
@@ -113,6 +120,20 @@ const TABS = [
     grad:  'linear-gradient(135deg,#0891b2,#0e7490)',
     lightBg: '#e0f2fe',
     lightFg: '#0369a1',
+    activeColor: '#38bdf8',
+    activeBg: 'rgba(8,145,178,0.25)',
+  },
+  {
+    key:   'ai-insights',
+    label: 'AI Insights',
+    desc:  'Auto-computed editorial intelligence from your data',
+    icon:  Brain,
+    color: '#d97706',
+    grad:  'linear-gradient(135deg,#d97706,#b45309)',
+    lightBg: '#fef3c7',
+    lightFg: '#b45309',
+    activeColor: '#fbbf24',
+    activeBg: 'rgba(217,119,6,0.25)',
   },
   {
     key:   'settings',
@@ -123,6 +144,8 @@ const TABS = [
     grad:  'linear-gradient(135deg,#7c3aed,#6d28d9)',
     lightBg: '#ede9fe',
     lightFg: '#6d28d9',
+    activeColor: '#a78bfa',
+    activeBg: 'rgba(124,58,237,0.25)',
     adminOnly: true,
   },
 ];
@@ -193,14 +216,14 @@ export default function DigitalTracker() {
                 className="relative flex items-center gap-2.5 px-4 py-3 text-sm font-medium transition-all"
                 style={{
                   color:          active ? '#fff' : 'rgba(255,255,255,0.55)',
-                  borderBottom:   active ? `2.5px solid ${t.color === '#dc2626' ? '#f87171' : t.color === '#7c3aed' ? '#a78bfa' : '#60a5fa'}` : '2.5px solid transparent',
+                  borderBottom:   active ? `2.5px solid ${t.activeColor || '#60a5fa'}` : '2.5px solid transparent',
                   marginBottom:   '-1px',
                 }}>
                 <span className="rounded-md p-1 transition-all"
                   style={{
-                    background: active ? (t.color === '#dc2626' ? 'rgba(239,68,68,0.25)' : t.color === '#7c3aed' ? 'rgba(124,58,237,0.25)' : 'rgba(37,99,235,0.25)') : 'transparent',
+                    background: active ? (t.activeBg || 'rgba(37,99,235,0.25)') : 'transparent',
                   }}>
-                  <t.icon size={14} style={{ color: active ? (t.color === '#dc2626' ? '#f87171' : t.color === '#7c3aed' ? '#a78bfa' : '#60a5fa') : 'rgba(255,255,255,0.5)' }} />
+                  <t.icon size={14} style={{ color: active ? (t.activeColor || '#60a5fa') : 'rgba(255,255,255,0.5)' }} />
                 </span>
                 {t.label}
                 {active && t.key === 'breaking' && (
@@ -237,6 +260,9 @@ export default function DigitalTracker() {
       )}
       {tab === 'performance' && (
         <PerformanceTab user={user} canAdmin={canAdmin} />
+      )}
+      {tab === 'ai-insights' && (
+        <AiInsightsTab user={user} canAdmin={canAdmin} />
       )}
       {tab === 'settings' && canAdmin && (
         <SettingsTab month={today} onRefresh={() => {}} />
@@ -1958,374 +1984,465 @@ function speedBadge(diff) {
   );
 }
 
-function BreakingNewsTab({ user, canAdmin }) {
-  const [entries, setEntries]   = useState([]);
-  const [loading, setLoading]   = useState(false);
-  const [dateFrom, setDateFrom] = useState(TODAY);
-  const [dateTo,   setDateTo]   = useState(TODAY);
-  const [showForm, setShowForm] = useState(false);
-  const [editId,   setEditId]   = useState(null);
-  const [fetching, setFetching] = useState(false);
-  const [patrikaArticles, setPatrikaArticles] = useState([]);
-  const [showPatrika, setShowPatrika]  = useState(false);
-  const [err, setErr] = useState('');
+const NEWS_CATS = [
+  { key: 'all',           label: 'All',           color: '#64748b' },
+  { key: 'breaking',      label: 'Breaking',      color: '#dc2626' },
+  { key: 'national',      label: 'National',      color: '#2563eb' },
+  { key: 'crime',         label: 'Crime',         color: '#ea580c' },
+  { key: 'sports',        label: 'Sports',        color: '#16a34a' },
+  { key: 'entertainment', label: 'Entertainment', color: '#7c3aed' },
+  { key: 'business',      label: 'Business',      color: '#0891b2' },
+  { key: 'health',        label: 'Health',        color: '#059669' },
+  { key: 'education',     label: 'Education',     color: '#ca8a04' },
+];
 
-  const canWrite = canAdmin || (user?.source === 'digital' && user?.digital_role === 'team_lead');
-  const myName   = user?.name || '';
-
-  const EMPTY = {
-    entry_date: TODAY, editor_name: myName, article_title: '', article_url: '',
-    time_filed: '', source_name: '', source_time: '', competitor_time: '', value_addition: '', wp_publish_date: '',
-  };
-  const [form, setForm] = useState(EMPTY);
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+function BreakingNewsTab() {
+  const [allNews,      setAllNews]      = useState([]);
+  const [sources,      setSources]      = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [err,          setErr]          = useState('');
+  const [newsSource,   setNewsSource]   = useState('all');
+  const [newsCategory, setNewsCategory] = useState('all');
 
   const load = async () => {
     setLoading(true); setErr('');
     try {
-      const d = await api.breakingNews({ from: dateFrom, to: dateTo });
-      setEntries(d.entries || []);
-    } catch (e) { setErr(e.message); }
+      const res = await api.newsFeed(TODAY);
+      setAllNews(res.articles  || []);
+      setSources(res.sources   || []);
+    } catch (e) { setErr('Could not load news feed: ' + e.message); }
     finally { setLoading(false); }
   };
 
-  useEffect(() => { load(); }, [dateFrom, dateTo]); // eslint-disable-line
+  useEffect(() => { load(); }, []);
 
-  const fetchFromPatrika = async () => {
-    setFetching(true); setErr('');
-    try {
-      const d = await api.fetchPatrikaArticles('breaking-news');
-      setPatrikaArticles(d.articles || []);
-      setShowPatrika(true);
-    } catch (e) { setErr('Patrika fetch: ' + e.message); }
-    finally { setFetching(false); }
+  // Derived lists
+  const catMatch = (a, key) => {
+    const c = (a.category || '').toLowerCase();
+    return c === key || c === key + ' news' || c === key + 's';
   };
 
-  const fillFromArticle = async (art) => {
-    setForm(f => ({
-      ...f,
-      article_title:  art.title   || f.article_title,
-      article_url:    art.url     || f.article_url,
-      editor_name:    art.author  || f.editor_name,
-      time_filed:     art.publish_time || f.time_filed,
-      wp_publish_date:art.publish_date || f.wp_publish_date,
-    }));
-    setShowPatrika(false);
-    setShowForm(true);
-    setEditId(null);
+  const sourceFiltered = newsSource === 'all'
+    ? allNews
+    : allNews.filter(a => a.source === newsSource);
+
+  const filtered = newsCategory === 'all'
+    ? sourceFiltered
+    : sourceFiltered.filter(a => catMatch(a, newsCategory));
+
+  const catCount = (key) => {
+    const base = newsSource === 'all' ? allNews : allNews.filter(a => a.source === newsSource);
+    if (key === 'all') return base.length;
+    return base.filter(a => catMatch(a, key)).length;
   };
 
-  const lookupUrl = async () => {
-    if (!form.article_url) return;
-    setErr('');
-    try {
-      const meta = await api.articleMeta(form.article_url);
-      setForm(f => ({
-        ...f,
-        article_title:  meta.title        || f.article_title,
-        editor_name:    meta.author       || f.editor_name,
-        time_filed:     meta.publish_time || f.time_filed,
-        wp_publish_date:meta.publish_date || f.wp_publish_date,
-      }));
-    } catch (e) { setErr('URL lookup: ' + e.message); }
-  };
-
-  const submit = async (e) => {
-    e.preventDefault();
-    try {
-      if (editId) { await api.updateBreakingNews(editId, form); }
-      else        { await api.addBreakingNews(form); }
-      setShowForm(false); setEditId(null); setForm(EMPTY);
-      load();
-    } catch (e) { setErr(e.message); }
-  };
-
-  const startEdit = (entry) => {
-    setForm({
-      entry_date:     entry.entry_date?.slice(0,10) || TODAY,
-      editor_name:    entry.editor_name    || '',
-      article_title:  entry.article_title  || '',
-      article_url:    entry.article_url    || '',
-      time_filed:     entry.time_filed     || '',
-      source_name:    entry.source_name    || '',
-      source_time:    entry.source_time    || '',
-      competitor_time:entry.competitor_time|| '',
-      value_addition: entry.value_addition || '',
-      wp_publish_date:entry.wp_publish_date|| '',
-    });
-    setEditId(entry.id);
-    setShowForm(true);
-  };
-
-  const del = async (id) => {
-    if (!window.confirm('Delete this entry?')) return;
-    try { await api.deleteBreakingNews(id); load(); }
-    catch (e) { alert(e.message); }
-  };
-
-  // Stats
-  const fasterThanSource = entries.filter(e => {
-    if (!e.time_filed || !e.source_time) return false;
-    const toMin = t => { const [h, m] = t.toString().split(':').map(Number); return h * 60 + m; };
-    return toMin(e.time_filed) <= toMin(e.source_time);
-  }).length;
-
-  const fasterThanComp = entries.filter(e => {
-    if (!e.time_filed || !e.competitor_time) return false;
-    const toMin = t => { const [h, m] = t.toString().split(':').map(Number); return h * 60 + m; };
-    return toMin(e.time_filed) < toMin(e.competitor_time);
-  }).length;
+  const catColor = (key) => NEWS_CATS.find(c => c.key === key)?.color || '#64748b';
 
   return (
     <div className="space-y-4">
-      {/* Stats row */}
-      {entries.length > 0 && (
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="surface rounded-xl border p-4 flex items-center gap-3" style={{ borderColor: 'var(--border)' }}>
-            <Newspaper size={20} style={{ color: '#2563eb' }} />
-            <div><div className="text-2xl font-bold">{entries.length}</div><div className="text-sm">Stories Filed</div></div>
-          </div>
-          <div className="surface rounded-xl border p-4 flex items-center gap-3" style={{ borderColor: 'var(--border)' }}>
-            <Timer size={20} style={{ color: '#16a34a' }} />
-            <div>
-              <div className="text-2xl font-bold" style={{ color: '#16a34a' }}>{fasterThanSource}</div>
-              <div className="text-sm">Faster Than Source</div>
-            </div>
-          </div>
-          <div className="surface rounded-xl border p-4 flex items-center gap-3" style={{ borderColor: 'var(--border)' }}>
-            <Globe size={20} style={{ color: '#7c3aed' }} />
-            <div>
-              <div className="text-2xl font-bold" style={{ color: '#7c3aed' }}>{fasterThanComp}</div>
-              <div className="text-sm">Faster Than Competitors</div>
-            </div>
-          </div>
-        </div>
-      )}
+      <div className="surface rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
 
-      {/* Controls */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1.5 text-sm">
-          <CalendarDays size={14} style={{ color: 'var(--muted)' }} />
-          <input type="date" className="input py-1.5 text-sm" value={dateFrom} max={TODAY}
-            onChange={e => setDateFrom(e.target.value)} />
-          <span style={{ color: 'var(--muted)' }}>to</span>
-          <input type="date" className="input py-1.5 text-sm" value={dateTo} max={TODAY}
-            onChange={e => setDateTo(e.target.value)} />
+        {/* ── Header ──────────────────────────────────────────────────────── */}
+        <div className="flex items-center justify-between px-4 py-3 border-b"
+          style={{ borderColor: 'var(--border)', background: 'linear-gradient(90deg,#fef2f2,#fff1f2)' }}>
+          <div className="flex items-center gap-2">
+            <div className="rounded-lg p-1.5" style={{ background: '#fee2e2' }}>
+              <Radio size={15} style={{ color: '#dc2626' }} />
+            </div>
+            <span className="font-bold text-sm">Today's Live News Feed</span>
+            {!loading && allNews.length > 0 && (
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                style={{ background: '#dc2626', color: '#fff' }}>
+                {allNews.length} articles
+              </span>
+            )}
+          </div>
+          <button className="btn-ghost p-1.5" onClick={load} title="Refresh">
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+          </button>
         </div>
-        <button className="btn-ghost px-2.5 py-1.5" onClick={load} title="Refresh"><RefreshCw size={14} /></button>
 
-        <div className="ml-auto flex gap-2">
+        {/* ── Source filter pills ──────────────────────────────────────── */}
+        <div className="flex flex-wrap gap-1.5 px-4 py-2.5 border-b" style={{ borderColor: 'var(--border)' }}>
           <button
-            className="btn-ghost text-sm flex items-center gap-1.5 px-3 py-2"
-            style={{ color: '#dc2626', borderColor: '#fca5a5', border: '1px solid' }}
-            onClick={fetchFromPatrika}
-            disabled={fetching}>
-            <Globe size={14} /> {fetching ? 'Fetching…' : 'Fetch from Patrika'}
+            onClick={() => setNewsSource('all')}
+            className="px-3 py-1 rounded-full text-xs font-semibold transition-all"
+            style={{
+              background: newsSource === 'all' ? '#374151' : 'var(--border)',
+              color:      newsSource === 'all' ? '#fff'    : 'var(--muted)',
+            }}>
+            All Sources
+            <span className="ml-1 opacity-80">({allNews.length})</span>
           </button>
-          <button
-            className="text-sm flex items-center gap-1.5 px-3 py-2 rounded-lg text-white"
-            style={{ background: '#2563eb' }}
-            onClick={() => { setForm(EMPTY); setEditId(null); setShowForm(true); setShowPatrika(false); }}>
-            <Plus size={14} /> Add Entry
-          </button>
+          {sources.filter(s => s.count > 0).map(s => (
+            <button key={s.key}
+              onClick={() => setNewsSource(s.key)}
+              className="px-3 py-1 rounded-full text-xs font-semibold transition-all"
+              style={{
+                background: newsSource === s.key ? s.color : 'var(--border)',
+                color:      newsSource === s.key ? '#fff'  : 'var(--muted)',
+              }}>
+              {s.name}
+              <span className="ml-1 opacity-80">({s.count})</span>
+            </button>
+          ))}
+          {loading && sources.length === 0 && (
+            <span className="text-xs" style={{ color: 'var(--muted)' }}>Loading sources…</span>
+          )}
+        </div>
+
+        {/* ── Category filter pills ────────────────────────────────────── */}
+        <div className="flex flex-wrap gap-1.5 px-4 py-2 border-b" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+          {NEWS_CATS.map(c => {
+            const count = catCount(c.key);
+            if (c.key !== 'all' && count === 0) return null;
+            return (
+              <button key={c.key}
+                onClick={() => setNewsCategory(c.key)}
+                className="px-2.5 py-0.5 rounded-full text-xs font-semibold transition-all"
+                style={{
+                  background: newsCategory === c.key ? c.color : 'transparent',
+                  color:      newsCategory === c.key ? '#fff'  : 'var(--muted)',
+                  border: `1px solid ${newsCategory === c.key ? c.color : 'var(--border)'}`,
+                }}>
+                {c.label}
+                {c.key !== 'all' && <span className="ml-1 opacity-70">({count})</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ── Feed ────────────────────────────────────────────────────────── */}
+        <div className="divide-y" style={{ borderColor: 'var(--border)', maxHeight: 560, overflowY: 'auto' }}>
+          {loading ? (
+            <div className="p-4 space-y-2">
+              {[1,2,3,4,5,6,7,8].map(i => (
+                <div key={i} className="h-11 rounded-lg animate-pulse" style={{ background: 'var(--border)' }} />
+              ))}
+            </div>
+          ) : err ? (
+            <div className="p-4 text-sm" style={{ color: '#dc2626' }}>{err}</div>
+          ) : filtered.length === 0 ? (
+            <div className="p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>
+              No articles found. Try selecting a different source or category.
+            </div>
+          ) : filtered.map((a, i) => {
+            const rawCat = (a.category || 'other').toLowerCase();
+            const catKey = rawCat.replace(' news', '').replace(/s$/, '').trim();
+            const color  = catColor(catKey) || catColor(rawCat);
+            return (
+              <div key={i}
+                className="flex items-start gap-3 px-4 py-2.5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+
+                {/* Time */}
+                <div className="flex-shrink-0 text-center pt-0.5" style={{ minWidth: 38 }}>
+                  <div className="text-xs font-bold tabular-nums" style={{ color: a.source_color || '#dc2626' }}>
+                    {a.publish_time || '—'}
+                  </div>
+                  {a.publish_date && (
+                    <div className="text-[9px]" style={{ color: 'var(--muted)' }}>
+                      {a.publish_date.slice(5, 10)}
+                    </div>
+                  )}
+                </div>
+
+                {/* Source badge */}
+                <span className="flex-shrink-0 mt-0.5 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded whitespace-nowrap"
+                  style={{ background: `${a.source_color || '#dc2626'}18`, color: a.source_color || '#dc2626' }}>
+                  {a.source_name || a.source}
+                </span>
+
+                {/* Category badge */}
+                <span className="flex-shrink-0 mt-0.5 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded whitespace-nowrap"
+                  style={{ background: `${color}18`, color }}>
+                  {catKey || rawCat}
+                </span>
+
+                {/* Title */}
+                <div className="flex-1 min-w-0">
+                  {a.url
+                    ? <a href={a.url} target="_blank" rel="noopener noreferrer"
+                        className="text-sm font-medium leading-snug hover:underline line-clamp-2"
+                        style={{ color: 'var(--text)' }}>
+                        {a.title}
+                      </a>
+                    : <p className="text-sm font-medium leading-snug line-clamp-2">{a.title}</p>
+                  }
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* ── Footer count ─────────────────────────────────────────────── */}
+        {!loading && filtered.length > 0 && (
+          <div className="px-4 py-2 border-t text-xs" style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}>
+            Showing {filtered.length} of {allNews.length} articles · auto-refreshes every 5 min
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── AI Insights Tab ───────────────────────────────────────────────────────────
+const INSIGHT_META = {
+  pace:    { icon: Gauge,       bg: '#dbeafe', fg: '#1d4ed8' },
+  uv:      { icon: TrendingUp,  bg: '#d1fae5', fg: '#047857' },
+  editor:  { icon: AlertCircle, bg: '#fee2e2', fg: '#b91c1c' },
+  star:    { icon: Award,       bg: '#fef3c7', fg: '#b45309' },
+  quality: { icon: Star,        bg: '#f3e8ff', fg: '#7c3aed' },
+  teams:   { icon: Users2,      bg: '#e0f2fe', fg: '#0369a1' },
+  admin:   { icon: ShieldAlert,  bg: '#fef9c3', fg: '#854d0e' },
+  speed:   { icon: Flame,       bg: '#ffedd5', fg: '#c2410c' },
+  today:   { icon: Activity,    bg: '#dbeafe', fg: '#1d4ed8' },
+  weekly:  { icon: BarChart3,   bg: '#d1fae5', fg: '#047857' },
+  pattern: { icon: Lightbulb,   bg: '#fef3c7', fg: '#b45309' },
+};
+
+const SEV_STYLE = {
+  success: { border: '#16a34a', bg: '#f0fdf4', dot: '#16a34a', label: 'Great',      icon: CheckCircle  },
+  warning: { border: '#d97706', bg: '#fffbeb', dot: '#d97706', label: 'Attention',  icon: AlertCircle  },
+  alert:   { border: '#dc2626', bg: '#fff5f5', dot: '#dc2626', label: 'Urgent',     icon: AlertCircle  },
+  info:    { border: '#0891b2', bg: '#f0f9ff', dot: '#0891b2', label: 'Insight',    icon: Lightbulb    },
+};
+
+function InsightCard({ insight }) {
+  const [open, setOpen] = useState(false);
+  const meta  = INSIGHT_META[insight.type] || INSIGHT_META.pace;
+  const sev   = SEV_STYLE[insight.severity] || SEV_STYLE.info;
+  const Icon  = meta.icon;
+  const SevIcon = sev.icon;
+
+  return (
+    <div className="rounded-xl border overflow-hidden surface transition-all"
+      style={{ borderColor: sev.border, borderLeftWidth: 4 }}>
+      {/* Card header */}
+      <div className="flex items-start gap-3 p-4 cursor-pointer"
+        onClick={() => setOpen(o => !o)}>
+        <div className="flex-shrink-0 rounded-lg p-2 mt-0.5" style={{ background: meta.bg }}>
+          <Icon size={16} style={{ color: meta.fg }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
+              style={{ background: sev.bg, color: sev.dot }}>
+              {sev.label}
+            </span>
+          </div>
+          <div className="font-semibold text-sm leading-snug">{insight.title}</div>
+          <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>{insight.body}</div>
+        </div>
+        <div className="flex-shrink-0 mt-0.5">
+          {open ? <ChevronUp size={15} style={{ color: 'var(--muted)' }} /> : <ChevronDown size={15} style={{ color: 'var(--muted)' }} />}
         </div>
       </div>
 
-      {err && <div className="rounded-lg px-3 py-2 text-sm" style={{ color: '#dc2626', background: '#fef2f2' }}>{err}</div>}
-
-      {/* Patrika article picker */}
-      {showPatrika && patrikaArticles.length > 0 && (
-        <SectionCard title="Latest Articles from Patrika.com">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-xs" style={{ color: 'var(--muted)' }}>Click an article to pre-fill the entry form</p>
-            <button className="btn-ghost px-2 py-1" onClick={() => setShowPatrika(false)}><X size={14} /></button>
-          </div>
-          <div className="space-y-2">
-            {patrikaArticles.map((a, i) => (
-              <div key={i} className="flex items-start gap-3 rounded-lg p-3 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 border"
-                style={{ borderColor: 'var(--border)' }}
-                onClick={() => fillFromArticle(a)}>
-                <Newspaper size={16} className="mt-0.5 shrink-0" style={{ color: '#dc2626' }} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium leading-snug">{a.title || a.url}</div>
-                  <div className="text-xs mt-0.5 flex flex-wrap gap-2" style={{ color: 'var(--muted)' }}>
-                    {a.author && <span>By {a.author}</span>}
-                    {a.publish_time && <span>• Published {a.publish_time}</span>}
-                    {a.url && (
-                      <a href={a.url} target="_blank" rel="noopener noreferrer"
-                        onClick={e => e.stopPropagation()}
-                        className="flex items-center gap-0.5 hover:underline">
-                        <ExternalLink size={10} /> View
-                      </a>
-                    )}
-                  </div>
-                </div>
-                <ArrowRight size={16} className="shrink-0 mt-1" style={{ color: 'var(--muted)' }} />
-              </div>
-            ))}
-          </div>
-        </SectionCard>
-      )}
-
-      {/* Entry form */}
-      {showForm && (
-        <SectionCard title={editId ? 'Edit Entry' : 'Add Breaking News Entry'}>
-          <form onSubmit={submit} className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className="label text-xs">Date</label>
-                <input type="date" className="input" required max={TODAY} value={form.entry_date} onChange={e => set('entry_date', e.target.value)} />
-              </div>
-              <div>
-                <label className="label text-xs">Editor Name</label>
-                <input className="input" placeholder="Editor who filed the story" value={form.editor_name} onChange={e => set('editor_name', e.target.value)} />
-              </div>
+      {/* Expanded detail */}
+      {open && (
+        <div className="px-4 pb-4 border-t" style={{ borderColor: 'var(--border)' }}>
+          {/* Action recommendation */}
+          {insight.action && (
+            <div className="mt-3 flex items-start gap-2 rounded-lg p-3"
+              style={{ background: sev.bg }}>
+              <ArrowRight size={13} style={{ color: sev.dot, marginTop: 2, flexShrink: 0 }} />
+              <span className="text-xs font-medium" style={{ color: sev.dot }}>
+                {insight.action}
+              </span>
             </div>
+          )}
 
-            <div>
-              <label className="label text-xs">Article URL</label>
-              <div className="flex gap-2">
-                <input className="input flex-1" placeholder="https://www.patrika.com/…" value={form.article_url}
-                  onChange={e => set('article_url', e.target.value)} />
-                <button type="button" className="btn-ghost px-3 py-2 text-xs whitespace-nowrap"
-                  onClick={lookupUrl} disabled={!form.article_url}>
-                  Auto-fill from URL
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="label text-xs">Article Title</label>
-              <input className="input" placeholder="Headline" value={form.article_title} onChange={e => set('article_title', e.target.value)} />
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div>
-                <label className="label text-xs">Time Filed (HH:MM)</label>
-                <input type="time" className="input" value={form.time_filed} onChange={e => set('time_filed', e.target.value)} />
-              </div>
-              <div>
-                <label className="label text-xs">Source Time (HH:MM)</label>
-                <input type="time" className="input" value={form.source_time} onChange={e => set('source_time', e.target.value)} />
-              </div>
-              <div>
-                <label className="label text-xs">Competitor Publish Time</label>
-                <input type="time" className="input" value={form.competitor_time} onChange={e => set('competitor_time', e.target.value)} />
-              </div>
-            </div>
-
-            <div>
-              <label className="label text-xs">Source / Agency</label>
-              <input className="input" placeholder="ANI, PTI, Social Media, etc." value={form.source_name} onChange={e => set('source_name', e.target.value)} />
-            </div>
-
-            <div>
-              <label className="label text-xs">Value Addition / Suggestion by Incharge</label>
-              <textarea className="input" rows={2} placeholder="Feedback, angle suggestion, improvement…"
-                value={form.value_addition} onChange={e => set('value_addition', e.target.value)} />
-            </div>
-
-            <div className="flex gap-2">
-              <button type="submit" className="btn-primary text-sm px-4 py-2 flex items-center gap-1.5">
-                <Save size={14} /> {editId ? 'Update' : 'Save Entry'}
-              </button>
-              <button type="button" className="btn-ghost text-sm px-4 py-2"
-                onClick={() => { setShowForm(false); setEditId(null); }}>
-                Cancel
-              </button>
-            </div>
-          </form>
-        </SectionCard>
-      )}
-
-      {/* Entries table */}
-      {loading ? (
-        <div className="text-center py-10" style={{ color: 'var(--muted)' }}>Loading…</div>
-      ) : (
-        <SectionCard title={`Breaking News Log (${entries.length})`}>
-          {!entries.length ? (
-            <div className="text-center py-8" style={{ color: 'var(--muted)' }}>
-              No entries for this date range. Click "Fetch from Patrika" to load live articles.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm" style={{ minWidth: 900 }}>
+          {/* Data table */}
+          {Array.isArray(insight.data) && insight.data.length > 0 && (
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b text-left text-xs font-semibold uppercase tracking-wide"
-                    style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}>
-                    <th className="pb-2 pr-3">Date</th>
-                    <th className="pb-2 pr-3">Editor</th>
-                    <th className="pb-2 pr-3">Article</th>
-                    <th className="pb-2 pr-3">Time Filed</th>
-                    <th className="pb-2 pr-3">Source</th>
-                    <th className="pb-2 pr-3">vs Source</th>
-                    <th className="pb-2 pr-3">vs Competitor</th>
-                    <th className="pb-2 pr-3">Value Addition</th>
-                    <th className="pb-2">Actions</th>
+                  <tr style={{ color: 'var(--muted)' }}>
+                    {Object.keys(insight.data[0]).map(k => (
+                      <th key={k} className="pb-1.5 pr-4 text-left font-semibold uppercase tracking-wide text-[10px]">
+                        {k.replace(/_/g, ' ')}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
-                  {entries.map(e => {
-                    const vsSource = timeDiff(e.time_filed, e.source_time);
-                    const vsComp   = timeDiff(e.time_filed, e.competitor_time);
-                    return (
-                      <tr key={e.id} className="hover:bg-black/5 dark:hover:bg-white/5">
-                        <td className="py-2 pr-3 text-xs whitespace-nowrap">
-                          {e.entry_date?.slice(0,10) || '—'}
-                        </td>
-                        <td className="py-2 pr-3 font-medium whitespace-nowrap">{e.editor_name || '—'}</td>
-                        <td className="py-2 pr-3 max-w-xs">
-                          {e.article_url ? (
-                            <a href={e.article_url} target="_blank" rel="noopener noreferrer"
-                              className="hover:underline flex items-start gap-1 text-xs leading-snug"
-                              style={{ color: '#2563eb' }}>
-                              <ExternalLink size={11} className="mt-0.5 shrink-0" />
-                              <span className="line-clamp-2">{e.article_title || e.article_url}</span>
-                            </a>
-                          ) : (
-                            <span className="text-xs">{e.article_title || '—'}</span>
-                          )}
-                        </td>
-                        <td className="py-2 pr-3 text-xs whitespace-nowrap">
-                          <div className="flex items-center gap-1">
-                            <Clock size={11} style={{ color: 'var(--muted)' }} />
-                            {e.time_filed?.slice(0,5) || '—'}
-                          </div>
-                          {e.wp_publish_date && (
-                            <div className="text-[10px]" style={{ color: 'var(--muted)' }}>
-                              Published: {new Date(e.wp_publish_date).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-2 pr-3 text-xs">
-                          <div>{e.source_name || '—'}</div>
-                          {e.source_time && <div style={{ color: 'var(--muted)' }}>{e.source_time?.slice(0,5)}</div>}
-                        </td>
-                        <td className="py-2 pr-3">{speedBadge(vsSource)}</td>
-                        <td className="py-2 pr-3">
-                          {e.competitor_time
-                            ? <div>{speedBadge(vsComp)}<div className="text-[10px] mt-0.5" style={{ color: 'var(--muted)' }}>{e.competitor_time?.slice(0,5)}</div></div>
-                            : '—'}
-                        </td>
-                        <td className="py-2 pr-3 max-w-xs">
-                          <div className="text-xs line-clamp-2" style={{ color: 'var(--muted)' }}>
-                            {e.value_addition || '—'}
-                          </div>
-                        </td>
-                        <td className="py-2">
-                          <div className="flex gap-1">
-                            <button className="btn-ghost px-1.5 py-1" onClick={() => startEdit(e)}><Edit2 size={12} /></button>
-                            <button className="btn-ghost px-1.5 py-1" onClick={() => del(e.id)} style={{ color: '#dc2626' }}><Trash2 size={12} /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {insight.data.map((row, i) => (
+                    <tr key={i} className="hover:bg-black/5 dark:hover:bg-white/5">
+                      {Object.entries(row).map(([k, v]) => {
+                        const isNum  = typeof v === 'number';
+                        const isPct  = k.endsWith('pct') || k.endsWith('_pct');
+                        const isUv   = k.includes('uv') || k.includes('Uv') || k.includes('page_uniques') || k.includes('totalUv');
+                        const color  = isPct
+                          ? v >= 90 ? '#16a34a' : v >= 60 ? '#d97706' : '#dc2626'
+                          : 'var(--text)';
+                        return (
+                          <td key={k} className="py-1.5 pr-4" style={{ color }}>
+                            {isPct   ? `${v}%`
+                            : isUv   ? Number(v).toLocaleString('en-IN')
+                            : isNum  ? Number(v).toLocaleString('en-IN')
+                            : String(v || '—')}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
           )}
-        </SectionCard>
+
+          {/* Single-object data (stats block) */}
+          {insight.data && !Array.isArray(insight.data) && (
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {Object.entries(insight.data).map(([k, v]) => (
+                <div key={k} className="rounded-lg p-2" style={{ background: 'var(--bg)' }}>
+                  <div className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: 'var(--muted)' }}>
+                    {k.replace(/_/g, ' ')}
+                  </div>
+                  <div className="text-sm font-bold">
+                    {k.endsWith('pct') || k.endsWith('_pct') ? `${v}%`
+                    : typeof v === 'number' ? v.toLocaleString('en-IN')
+                    : String(v || '—')}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AiInsightsTab({ user, canAdmin }) {
+  const thisMonth = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }).slice(0, 7);
+  const [month,     setMonth]     = useState(thisMonth);
+  const [data,      setData]      = useState(null);
+  const [loading,   setLoading]   = useState(true);
+  const [err,       setErr]       = useState('');
+
+  const load = async (m) => {
+    setLoading(true); setErr('');
+    try {
+      const res = await api.aiInsights(m);
+      setData(res);
+    } catch (e) { setErr(e.message); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(month); }, [month]);
+
+  const sevOrder = { alert: 0, warning: 1, success: 2, info: 3 };
+  const sorted   = [...(data?.insights || [])].sort((a, b) =>
+    (sevOrder[a.severity] ?? 9) - (sevOrder[b.severity] ?? 9)
+  );
+
+  const counts = { alert: 0, warning: 0, success: 0, info: 0 };
+  sorted.forEach(i => { counts[i.severity] = (counts[i.severity] || 0) + 1; });
+
+  return (
+    <div className="space-y-5">
+      {/* Controls */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <div className="rounded-lg p-1.5" style={{ background: '#fef3c7' }}>
+            <Brain size={15} style={{ color: '#b45309' }} />
+          </div>
+          <div>
+            <div className="text-sm font-semibold">Editorial Intelligence</div>
+            {data?.computed_at && (
+              <div className="text-xs" style={{ color: 'var(--muted)' }}>
+                Updated {new Date(data.computed_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                {data.total_editors !== undefined && ` · ${data.total_editors} editors`}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <button onClick={() => setMonth(prevMonth(month))} className="btn-ghost px-2 py-1.5">
+              <ChevronDown size={14} />
+            </button>
+            <span className="text-sm font-semibold tabular-nums px-2">
+              {new Date(month + '-15').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
+            </span>
+            <button onClick={() => setMonth(nextMonth(month))} className="btn-ghost px-2 py-1.5"
+              disabled={month >= thisMonth}>
+              <ChevronUp size={14} />
+            </button>
+          </div>
+          <button className="btn-ghost px-2.5 py-1.5" onClick={() => load(month)} title="Refresh">
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+      </div>
+
+      {/* Month progress bar */}
+      {data && (
+        <div className="surface rounded-xl border p-4 space-y-2" style={{ borderColor: 'var(--border)' }}>
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-semibold">Month Progress</span>
+            <span className="font-bold tabular-nums" style={{ color: '#d97706' }}>{data.day_progress}%</span>
+          </div>
+          <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
+            <div className="h-2 rounded-full transition-all"
+              style={{ width: `${data.day_progress}%`, background: 'linear-gradient(90deg,#d97706,#f59e0b)' }} />
+          </div>
+          {/* Severity summary chips */}
+          <div className="flex flex-wrap gap-2 pt-1">
+            {Object.entries(counts).filter(([, n]) => n > 0).map(([sev, n]) => {
+              const s = SEV_STYLE[sev];
+              return (
+                <span key={sev} className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full"
+                  style={{ background: s.bg, color: s.dot }}>
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: s.dot }} />
+                  {n} {s.label}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Error */}
+      {err && (
+        <div className="rounded-lg p-3 text-sm" style={{ color: '#dc2626', background: '#fef2f2' }}>
+          {err}
+        </div>
+      )}
+
+      {/* Loading skeletons */}
+      {loading && (
+        <div className="space-y-3">
+          {[1,2,3,4,5].map(i => (
+            <div key={i} className="h-20 rounded-xl animate-pulse" style={{ background: 'var(--border)' }} />
+          ))}
+        </div>
+      )}
+
+      {/* Insight cards */}
+      {!loading && sorted.length === 0 && !err && (
+        <div className="text-center py-16" style={{ color: 'var(--muted)' }}>
+          <Brain size={36} className="mx-auto mb-3 opacity-30" />
+          <div className="font-medium">No insights available yet</div>
+          <div className="text-sm mt-1">Add targets and achievement data to generate insights.</div>
+        </div>
+      )}
+
+      {!loading && sorted.length > 0 && (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {sorted.map(insight => (
+            <InsightCard key={insight.id} insight={insight} />
+          ))}
+        </div>
+      )}
+
+      {/* Footer note */}
+      {!loading && sorted.length > 0 && (
+        <div className="text-center text-xs py-2" style={{ color: 'var(--muted)' }}>
+          Insights are computed from your DB — story targets, Chartbeat data & breaking news logs.
+          Data refreshes on each page visit.
+        </div>
       )}
     </div>
   );

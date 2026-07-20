@@ -170,6 +170,10 @@ export const api = {
     request(`/digital/breaking-news?action=fetch-patrika&category=${category}`),
   fetchPatrikaByDate: (date) =>
     request(`/digital/breaking-news?action=fetch-by-date&date=${encodeURIComponent(date)}`),
+  newsFeed: (date) =>
+    request(`/digital/news-feed${date ? '?date=' + encodeURIComponent(date) : ''}`),
+  aiInsights: (month) =>
+    request(`/digital/ai-insights${month ? '?month=' + encodeURIComponent(month) : ''}`),
   articleMeta: (url) =>
     request(`/digital/breaking-news?action=article-meta&url=${encodeURIComponent(url)}`),
   batchAuthors: (urls) =>
