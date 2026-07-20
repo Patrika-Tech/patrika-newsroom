@@ -1128,6 +1128,8 @@ function PatrikaStoriesTab({ user, canAdmin }) {
 
   // Keep a single `date` alias for today-mode (used by live scrape & save form)
   const date = period === 'today' ? fromDate : toDate;
+  // Human-readable label for display (range or single date)
+  const dateLabel = fromDate === toDate ? fromDate : `${fromDate} to ${toDate}`;
 
   const setDraft = (i, k, v) =>
     setDrafts(prev => ({ ...prev, [i]: { ...(prev[i] || {}), [k]: v } }));
@@ -1175,8 +1177,8 @@ function PatrikaStoriesTab({ user, canAdmin }) {
   };
 
   const fetchLive = async () => {
-    // Sitemap only has today's articles — skip if today is not in the range
-    if (toDate !== TODAY) {
+    // Sitemap only has today's articles — only fetch when viewing exactly today
+    if (fromDate !== TODAY || toDate !== TODAY) {
       setLiveArts([]); setAuthorMap({}); setAuthorsLoading(false);
       return;
     }
@@ -1362,7 +1364,7 @@ function PatrikaStoriesTab({ user, canAdmin }) {
 
       <StoriesDashboard
         allStories={filteredStories}
-        date={date}
+        date={dateLabel}
         loading={isLoading}
         authorsLoading={authorsLoading}
         authorsDone={authorsDone}
@@ -1579,7 +1581,7 @@ function StoriesDashboard({ allStories, date, loading,
       {/* ── 4 KPI cards ──────────────────────────────────────────────────── */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard icon={Newspaper} label="Total Stories"
-          value={allStories.length} sub={`Published ${date}`} color="#2563eb" />
+          value={allStories.length} sub={date} color="#2563eb" />
         <SummaryCard icon={Globe} label="Categories Active"
           value={catRows.length} sub={`Peak: ${peakHr !== undefined ? String(peakHr).padStart(2,'0')+':00' : '—'}`} color="#7c3aed" />
         <SummaryCard icon={Clock}
@@ -1601,7 +1603,7 @@ function StoriesDashboard({ allStories, date, loading,
           icon={Globe} color="#7c3aed"
           title="Category Activity"
           meta={`${catRows.length} categories · ${allStories.length} stories`}
-          right={`${date}`}
+          right={date}
         />
 
         {/* Category cards grid */}
@@ -1638,7 +1640,7 @@ function StoriesDashboard({ allStories, date, loading,
                   <div>
                     <p className="font-bold text-sm capitalize" style={{ color: catColor }}>{selectedCategory}</p>
                     <p className="text-xs" style={{ color: 'var(--muted)' }}>
-                      {catStories.length} {catStories.length === 1 ? 'story' : 'stories'} on {date}
+                      {catStories.length} {catStories.length === 1 ? 'story' : 'stories'} · {date}
                     </p>
                   </div>
                 </div>
@@ -1697,7 +1699,7 @@ function StoriesDashboard({ allStories, date, loading,
               <SectionCard title={
                 <span className="flex items-center gap-2">
                   <Globe size={14} style={{ color: '#7c3aed' }} />
-                  Category-wise Hourly Publishing — {date}
+                  Category-wise Hourly Publishing · {date}
                 </span>
               }>
                 <div className="overflow-x-auto">
@@ -1812,7 +1814,7 @@ function StoriesDashboard({ allStories, date, loading,
                 <div>
                   <p className="font-bold text-sm" style={{ color: '#15803d' }}>{selectedEditor}</p>
                   <p className="text-xs" style={{ color: '#16a34a' }}>
-                    {editorStories.length} {editorStories.length === 1 ? 'story' : 'stories'} on {date}
+                    {editorStories.length} {editorStories.length === 1 ? 'story' : 'stories'} · {date}
                   </p>
                 </div>
               </div>
@@ -1873,7 +1875,7 @@ function StoriesDashboard({ allStories, date, loading,
               <SectionCard title={
                 <span className="flex items-center gap-2">
                   <Users2 size={14} style={{ color: '#16a34a' }} />
-                  Editor-wise Hourly Publishing — {date}
+                  Editor-wise Hourly Publishing · {date}
                   {authorsLoading && (
                     <span className="text-xs font-normal flex items-center gap-1" style={{ color: '#16a34a' }}>
                       <RefreshCw size={10} className="animate-spin" /> {authorsDone}/{authorsTotal}

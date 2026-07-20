@@ -265,8 +265,31 @@ export const api = {
   // ── Admin Stats ─────────────────────────────────────────────────────────────
   hrAdminStats:      (state, branch) => withFallback(`/hr/admin-stats?state=${encodeURIComponent(state || 'All')}&branch=${encodeURIComponent(branch || 'All')}`, null),
   hrLeaves:          (start, end, state, branch) => request(`/hr/leaves?start=${start}&end=${end}&state=${encodeURIComponent(state || 'All')}&branch=${encodeURIComponent(branch || 'All')}`),
-  hrSanctionedPosts: ()          => withFallback('/hr/sanctioned-posts', []),
-  saveSanctionedPost:(data)      => request('/hr/sanctioned-posts', { method: 'POST', body: JSON.stringify(data) }),
+  hrSanctionedPosts:    ()     => withFallback('/hr/sanctioned-posts', []),
+  saveSanctionedPost:   (data) => request('/hr/sanctioned-posts', { method: 'POST', body: JSON.stringify(data) }),
+  downloadSanctionedTemplate: async () => {
+    const token = localStorage.getItem('pk_token');
+    const res = await fetch(`${API_BASE}/hr/sanctioned-posts/template`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) { let m = `HTTP ${res.status}`; try { const j = await res.json(); m = j.error || m; } catch {} throw new Error(m); }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = 'sanctioned_posts_template.xlsx'; a.click();
+    URL.revokeObjectURL(url);
+  },
+  uploadSanctionedBulk: async (file) => {
+    const token = localStorage.getItem('pk_token');
+    const fd = new FormData(); fd.append('file', file);
+    const res = await fetch(`${API_BASE}/hr/sanctioned-posts/bulk`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    });
+    if (!res.ok) { let m = `HTTP ${res.status}`; try { const j = await res.json(); m = j.error || m; } catch {} throw new Error(m); }
+    return res.json();
+  },
 
   // ── Appointments ────────────────────────────────────────────────────────────
   hrAppointments:      (params = {}) => {

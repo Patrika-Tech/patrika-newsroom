@@ -1636,6 +1636,8 @@ function AdminTab({ emps, canEditHr }) {
   const [sanctionEdit, setSanctionEdit] = useState(null); // {profile, count}
   const [saving,  setSaving]  = useState(false);
   const [retView, setRetView] = useState('within1yr'); // which retirement bucket list is shown
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const [bulkResult,    setBulkResult]    = useState(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -1670,6 +1672,22 @@ function AdminTab({ emps, canEditHr }) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Profiles');
     XLSX.writeFile(wb, `profile_sanction_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const handleBulkUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setBulkUploading(true);
+    setBulkResult(null);
+    try {
+      const r = await api.uploadSanctionedBulk(file);
+      setBulkResult(r);
+      load();
+    } catch (err) {
+      setBulkResult({ ok: false, error: err.message });
+    }
+    setBulkUploading(false);
   };
 
   if (loading) {
@@ -1742,10 +1760,22 @@ function AdminTab({ emps, canEditHr }) {
       <SectionCard
         title="Story Type-wise: Sanctioned vs Available (Active Members)"
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button onClick={downloadProfiles} className="btn-ghost flex items-center gap-1.5 text-sm">
-              <Download size={14} /> Excel
+              <Download size={14} /> Export
             </button>
+            {canEditHr() && (
+              <>
+                <button onClick={() => api.downloadSanctionedTemplate().catch(e => alert('Download failed: ' + e.message))} className="btn-ghost flex items-center gap-1.5 text-sm">
+                  <Download size={14} /> Template
+                </button>
+                <label className={`btn-ghost flex items-center gap-1.5 text-sm cursor-pointer ${bulkUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                  {bulkUploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                  {bulkUploading ? 'Uploading…' : 'Bulk Upload'}
+                  <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleBulkUpload} disabled={bulkUploading} />
+                </label>
+              </>
+            )}
           </div>
         }
       >
@@ -1753,6 +1783,14 @@ function AdminTab({ emps, canEditHr }) {
           Click the sanctioned count to update it. Vacant = Sanctioned - Available.
           Figures follow the global State/Branch filter — set sanction posts branch-wise by selecting a branch first; the All view shows branch totals summed.
         </p>
+        {bulkResult && (
+          <div className={`mb-3 rounded-lg px-3 py-2 text-sm ${bulkResult.ok ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'}`}>
+            {bulkResult.ok
+              ? `Upload complete — ${bulkResult.inserted} new, ${bulkResult.updated} updated, ${bulkResult.skipped} skipped.${bulkResult.errors?.length ? ` Warnings: ${bulkResult.errors.slice(0,3).join('; ')}` : ''}`
+              : `Upload failed: ${bulkResult.error}`}
+            <button className="ml-3 underline text-xs" onClick={() => setBulkResult(null)}>Dismiss</button>
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

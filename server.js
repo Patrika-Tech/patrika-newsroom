@@ -247,6 +247,8 @@ app.all('/api/hr/training',           h('./api/hr/training'));
 app.all('/api/hr/grading-auto',       h('./api/hr/grading-auto'));
 app.all('/api/hr/grading-top',        h('./api/hr/grading-top'));
 app.all('/api/hr/grading',            h('./api/hr/grading'));
+app.get('/api/hr/sanctioned-posts/template', h('./api/hr/sanctioned-posts-template'));  // xlsx download
+app.post('/api/hr/sanctioned-posts/bulk',    require('./api/hr/sanctioned-posts-bulk')); // multer upload
 app.all('/api/hr/sanctioned-posts',   h('./api/hr/sanctioned-posts'));
 app.all('/api/hr/admin-stats',        h('./api/hr/admin-stats'));
 app.all('/api/hr/leaves',             h('./api/hr/leaves'));

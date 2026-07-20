@@ -59,7 +59,7 @@ export default function Layout({ children }) {
           </NavLink>
         ))}
 
-        {user?.role !== 'Digital' && (
+        {user?.source !== 'digital' && (
           <button
             onClick={() => {
               let cred = null;
