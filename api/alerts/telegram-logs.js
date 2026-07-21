@@ -24,13 +24,12 @@ module.exports = async function handler(req, res) {
            tl.message,
            tl.chat_id,
            tl.status,
-           DATE_FORMAT(DATE_ADD(tl.created_at, INTERVAL 5 HOUR 30 MINUTE), '%d %b %Y %H:%i') AS sent_at,
-           u.EMPNAME            AS recipient_name,
-           u.Branch             AS recipient_branch,
-           u.State              AS recipient_state,
-           u.emp_designation    AS recipient_role
+           DATE_FORMAT(DATE_ADD(tl.created_at, INTERVAL 330 MINUTE), '%d %b %Y %H:%i') AS sent_at,
+           (SELECT EMPNAME         FROM \`user\` WHERE telegram_chat_id = tl.chat_id LIMIT 1) AS recipient_name,
+           (SELECT Branch          FROM \`user\` WHERE telegram_chat_id = tl.chat_id LIMIT 1) AS recipient_branch,
+           (SELECT State           FROM \`user\` WHERE telegram_chat_id = tl.chat_id LIMIT 1) AS recipient_state,
+           (SELECT emp_designation FROM \`user\` WHERE telegram_chat_id = tl.chat_id LIMIT 1) AS recipient_role
          FROM telegram_logs tl
-         LEFT JOIN \`user\` u ON u.telegram_chat_id = tl.chat_id
          ORDER BY tl.id DESC
          LIMIT ${limit} OFFSET ${offset}`
       ),
