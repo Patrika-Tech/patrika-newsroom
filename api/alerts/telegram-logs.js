@@ -24,7 +24,7 @@ module.exports = async function handler(req, res) {
            tl.message,
            tl.chat_id,
            tl.status,
-           DATE_FORMAT(CONVERT_TZ(tl.created_at, '+00:00', '+05:30'), '%d %b %Y %H:%i') AS sent_at,
+           DATE_FORMAT(DATE_ADD(tl.created_at, INTERVAL 5 HOUR 30 MINUTE), '%d %b %Y %H:%i') AS sent_at,
            u.EMPNAME            AS recipient_name,
            u.Branch             AS recipient_branch,
            u.State              AS recipient_state,
@@ -32,8 +32,7 @@ module.exports = async function handler(req, res) {
          FROM telegram_logs tl
          LEFT JOIN \`user\` u ON u.telegram_chat_id = tl.chat_id
          ORDER BY tl.id DESC
-         LIMIT ? OFFSET ?`,
-        [limit, offset]
+         LIMIT ${limit} OFFSET ${offset}`
       ),
     ]);
 
