@@ -25,7 +25,7 @@ function tgPost(token, method, body) {
 
 function formatAlert(alert) {
   const sev = alert.severity === 'high' ? '🔴' : alert.severity === 'med' ? '🟡' : '🟢';
-  return `${sev} <b>[${alert.type || 'Alert'}]</b>\n${alert.message}\n<i>Edition: ${alert.edition || 'All'} | Channel: ${alert.channel || '-'}</i>`;
+  return `${sev} <b>[${alert.type || 'Alert'}]</b>\n${alert.message || alert.text || ''}\n<i>Edition: ${alert.edition || 'All'} | Channel: ${alert.channel || '-'}</i>`;
 }
 
 module.exports = async function handler(req, res) {
