@@ -3,6 +3,8 @@ const { query }  = require('../_lib/mysql');
 const { getUser } = require('../_lib/auth');
 const { setCors, handleOptions } = require('../_lib/cors');
 
+const LEAVE_EXCL = `'P','MP','WFH','OD','T','TL','SU','ES','SPL','WOP','PH','WOHP','H','WO','A','CF'`;
+
 function tgPost(token, method, body) {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify(body);
@@ -23,33 +25,64 @@ function tgPost(token, method, body) {
   });
 }
 
-function formatAlert(alert) {
-  const sev = alert.severity === 'high' ? '🔴' : alert.severity === 'med' ? '🟡' : '🟢';
-  return `${sev} <b>[${alert.type || 'Alert'}]</b>\n${alert.message || alert.text || ''}\n<i>Edition: ${alert.edition || 'All'} | Channel: ${alert.channel || '-'}</i>`;
+async function sendOne(token, chatId, text) {
+  const tgRes = await tgPost(token, 'sendMessage', { chat_id: chatId, text, parse_mode: 'HTML' });
+  query(
+    'INSERT INTO telegram_logs (alert_id, message, chat_id, status, telegram_response) VALUES (NULL, ?, ?, ?, ?)',
+    [text, chatId, tgRes.ok ? 'sent' : 'failed', JSON.stringify(tgRes)]
+  ).catch(() => {});
+  return tgRes;
 }
 
-// Look up branch-level REs + Desk Heads and their State Heads for a list of branches
-async function getAlertRecipients(branches) {
-  if (!branches || branches.length === 0) return [];
+function fmtDate(d) {
+  return new Date(String(d).slice(0, 10) + 'T00:00:00')
+    .toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+}
 
+// ── IST date helpers (mirror of live.js) ──────────────────────────────────────
+function toIST(ms) { return new Date(ms + 5.5 * 3600000).toISOString().slice(0, 10); }
+function leaveWindow() {
+  const istDay = new Date(Date.now() + 5.5 * 3600000).getDay();
+  const from   = toIST(Date.now() - (istDay === 0 ? 13 : istDay + 6) * 864e5);
+  const to     = toIST(Date.now() - 2 * 864e5);
+  return { from, to };
+}
+
+// ── Per-branch personalized: Staff On Leave ───────────────────────────────────
+async function sendStaffLeave(token, branches) {
+  const { from, to } = leaveWindow();
   const ph = branches.map(() => '?').join(',');
 
-  const [branchREs, stateHeads] = await Promise.all([
-    // Desk Heads and REs of the affected branches
+  const [employees, reList, stateHeads] = await Promise.all([
+    // Each employee's min/max leave date in the window, per branch
     query(
-      `SELECT EMPNAME, Branch, State, telegram_chat_id
-       FROM \`user\`
+      `SELECT u.EMPNAME, u.Branch,
+              MIN(h.att_date) AS from_date,
+              MAX(h.att_date) AS to_date
+       FROM hrms_data h
+       JOIN \`user\` u ON UPPER(TRIM(u.pan_no)) = UPPER(TRIM(h.pan_no))
+       WHERE h.att_date BETWEEN ? AND ?
+         AND UPPER(TRIM(h.att_type)) NOT IN (${LEAVE_EXCL})
+         AND u.Branch IN (${ph})
+         AND (u.is_emp_working = 1 OR u.Status IN ('Working','Active'))
+       GROUP BY u.pan_no, u.EMPNAME, u.Branch
+       ORDER BY u.Branch, u.EMPNAME`,
+      [from, to, ...branches]
+    ).catch(() => []),
+
+    // REs of affected branches
+    query(
+      `SELECT EMPNAME, Branch, State, telegram_chat_id FROM \`user\`
        WHERE Branch IN (${ph})
-         AND Story_Type IN ('RE')
+         AND Story_Type = 'RE'
          AND telegram_chat_id IS NOT NULL AND telegram_chat_id != ''
          AND (is_emp_working = 1 OR Status IN ('Working','Active'))`,
       branches
     ).catch(() => []),
 
-    // State Heads for the states those branches belong to
+    // State Heads for parent states
     query(
-      `SELECT EMPNAME, Branch, State, telegram_chat_id
-       FROM \`user\`
+      `SELECT EMPNAME, Branch, State, telegram_chat_id FROM \`user\`
        WHERE State IN (
          SELECT DISTINCT State FROM \`user\` WHERE Branch IN (${ph}) AND State IS NOT NULL AND State != ''
        )
@@ -60,19 +93,117 @@ async function getAlertRecipients(branches) {
     ).catch(() => []),
   ]);
 
-  // Merge, dedup by chat_id
-  const seen = new Map();
-  [...branchREs, ...stateHeads].forEach(u => {
-    if (!seen.has(u.telegram_chat_id)) {
-      seen.set(u.telegram_chat_id, {
-        name:   u.EMPNAME,
-        branch: u.Branch,
-        state:  u.State,
-        chatId: u.telegram_chat_id,
-      });
-    }
+  // Group employees by branch
+  const byBranch = {};
+  employees.forEach(e => {
+    (byBranch[e.Branch] = byBranch[e.Branch] || []).push(e);
   });
-  return [...seen.values()];
+
+  const fromLabel = fmtDate(from);
+  const toLabel   = fmtDate(to);
+  const sent = [], failed = [];
+
+  // Send branch-specific message to each RE
+  for (const re of reList) {
+    const emps = byBranch[re.Branch] || [];
+    if (!emps.length) continue;
+
+    const empList = emps.map(e => {
+      const fd = fmtDate(e.from_date);
+      const td = fmtDate(e.to_date);
+      return `• ${e.EMPNAME} (${fd}${fd !== td ? ` – ${td}` : ''})`;
+    }).join('\n');
+
+    const text =
+      `📅 <b>Staff on Leave — ${re.Branch}</b>\n\n` +
+      `${emps.length} employee${emps.length > 1 ? 's' : ''} on leave (${fromLabel} → ${toLabel}):\n` +
+      `${empList}\n\n` +
+      `<i>Patrika Newsroom</i>`;
+
+    try {
+      const tgRes = await sendOne(token, re.telegram_chat_id, text);
+      if (tgRes.ok) sent.push({ name: re.EMPNAME, branch: re.Branch });
+      else failed.push({ name: re.EMPNAME, branch: re.Branch, error: tgRes.description });
+    } catch (err) {
+      failed.push({ name: re.EMPNAME, branch: re.Branch, error: err.message });
+    }
+  }
+
+  // Send consolidated summary to State Heads
+  for (const sh of stateHeads) {
+    // Only branches in this state
+    const stateBranches = reList
+      .filter(r => r.State === sh.State)
+      .map(r => r.Branch);
+
+    const stateEmps = employees.filter(e => stateBranches.includes(e.Branch));
+    if (!stateEmps.length) continue;
+
+    const empList = stateEmps.map(e => {
+      const fd = fmtDate(e.from_date);
+      const td = fmtDate(e.to_date);
+      return `• ${e.EMPNAME} (${e.Branch}) — ${fd}${fd !== td ? ` – ${td}` : ''}`;
+    }).join('\n');
+
+    const text =
+      `📅 <b>Staff on Leave — ${sh.State} Summary</b>\n\n` +
+      `${stateEmps.length} employee${stateEmps.length > 1 ? 's' : ''} on leave (${fromLabel} → ${toLabel}):\n` +
+      `${empList}\n\n` +
+      `<i>Patrika Newsroom</i>`;
+
+    try {
+      const tgRes = await sendOne(token, sh.telegram_chat_id, text);
+      if (tgRes.ok) sent.push({ name: sh.EMPNAME, branch: sh.State + ' (SH)', state: sh.State });
+      else failed.push({ name: sh.EMPNAME, error: tgRes.description });
+    } catch (err) {
+      failed.push({ name: sh.EMPNAME, error: err.message });
+    }
+  }
+
+  return { sent, failed };
+}
+
+// ── Generic: same message to all branch REs + State Heads ────────────────────
+async function sendGeneric(token, text, branches) {
+  const ph = branches.map(() => '?').join(',');
+  const [reList, stateHeads] = await Promise.all([
+    query(
+      `SELECT EMPNAME, Branch, State, telegram_chat_id FROM \`user\`
+       WHERE Branch IN (${ph})
+         AND Story_Type = 'RE'
+         AND telegram_chat_id IS NOT NULL AND telegram_chat_id != ''
+         AND (is_emp_working = 1 OR Status IN ('Working','Active'))`,
+      branches
+    ).catch(() => []),
+    query(
+      `SELECT EMPNAME, Branch, State, telegram_chat_id FROM \`user\`
+       WHERE State IN (
+         SELECT DISTINCT State FROM \`user\` WHERE Branch IN (${ph}) AND State IS NOT NULL AND State != ''
+       )
+         AND Story_Type IN ('State Head', 'SH')
+         AND telegram_chat_id IS NOT NULL AND telegram_chat_id != ''
+         AND (is_emp_working = 1 OR Status IN ('Working','Active'))`,
+      branches
+    ).catch(() => []),
+  ]);
+
+  const seen = new Map();
+  [...reList, ...stateHeads].forEach(u => {
+    if (!seen.has(u.telegram_chat_id))
+      seen.set(u.telegram_chat_id, { name: u.EMPNAME, branch: u.Branch, state: u.State, chatId: u.telegram_chat_id });
+  });
+
+  const sent = [], failed = [];
+  for (const r of seen.values()) {
+    try {
+      const tgRes = await sendOne(token, r.chatId, text);
+      if (tgRes.ok) sent.push({ name: r.name, branch: r.branch, state: r.state });
+      else failed.push({ name: r.name, branch: r.branch, error: tgRes.description });
+    } catch (err) {
+      failed.push({ name: r.name, branch: r.branch, error: err.message });
+    }
+  }
+  return { sent, failed };
 }
 
 module.exports = async function handler(req, res) {
@@ -86,63 +217,47 @@ module.exports = async function handler(req, res) {
   const token = process.env.TELEGRAM_BOT_TOKEN || '';
   if (!token) return res.status(500).json({ ok: false, error: 'TELEGRAM_BOT_TOKEN not configured' });
 
-  const alert       = req.body?.alert;
-  const alertId     = req.body?.alert_id || null;
+  const alert          = req.body?.alert;
   const overrideChatId = (req.body?.chat_id || '').toString().trim();
 
-  // Build message text
-  const text = req.body?.message || (alert ? formatAlert(alert) : null);
-  if (!text) return res.status(400).json({ ok: false, error: 'message or alert required' });
-
-  // ── Determine recipients ────────────────────────────────────────────────────
-  let recipients = [];
-
   const alertBranches = alert?.branches || [];
+  const alertType     = alert?.type || '';
+
+  let sent = [], failed = [];
 
   if (alertBranches.length > 0) {
-    // Smart mode: always try branch REs + State Heads first (ignore chat_id override)
-    recipients = await getAlertRecipients(alertBranches);
+    // Per-type personalized dispatch
+    const result = alertType === 'Staff On Leave'
+      ? await sendStaffLeave(token, alertBranches)
+      : await sendGeneric(token, buildGenericText(alert), alertBranches);
+
+    sent   = result.sent;
+    failed = result.failed;
   }
 
-  if (recipients.length === 0) {
-    // Fallback: explicit chat_id override OR .env default
+  if (sent.length === 0 && failed.length === 0) {
+    // Fallback: plain message to single chat_id
+    const text = req.body?.message || (alert ? buildGenericText(alert) : null);
+    if (!text) return res.status(400).json({ ok: false, error: 'message or alert required' });
+
     const fallbackChatId = overrideChatId || (process.env.TELEGRAM_CHAT_ID || '').trim();
     if (!fallbackChatId) return res.status(400).json({ ok: false, error: 'No recipients found and no chat_id configured' });
-    recipients = [{ chatId: fallbackChatId, name: 'Default', branch: null, state: null }];
-  }
 
-  // ── Send to each recipient ──────────────────────────────────────────────────
-  const sent   = [];
-  const failed = [];
-
-  for (const r of recipients) {
     try {
-      const tgRes = await tgPost(token, 'sendMessage', { chat_id: r.chatId, text, parse_mode: 'HTML' });
-
-      // Log to DB (non-fatal)
-      query(
-        'INSERT INTO telegram_logs (alert_id, message, chat_id, status, telegram_response) VALUES (NULL, ?, ?, ?, ?)',
-        [text, r.chatId, tgRes.ok ? 'sent' : 'failed', JSON.stringify(tgRes)]
-      ).catch(() => {});
-
-      if (tgRes.ok) {
-        sent.push({ name: r.name, branch: r.branch, state: r.state, chatId: r.chatId });
-      } else {
-        failed.push({ name: r.name, branch: r.branch, error: tgRes.description || 'Telegram error' });
-      }
+      const tgRes = await sendOne(token, fallbackChatId, text);
+      if (tgRes.ok) sent.push({ name: 'Default', branch: null });
+      else failed.push({ name: 'Default', error: tgRes.description });
     } catch (err) {
-      failed.push({ name: r.name, branch: r.branch, error: err.message });
+      failed.push({ name: 'Default', error: err.message });
     }
   }
 
   const ok = sent.length > 0;
-  return res.status(ok ? 200 : 502).json({
-    ok,
-    sent:    sent.length,
-    failed:  failed.length,
-    recipients: sent,
-    errors:  failed.length > 0 ? failed : undefined,
-    // Backwards compat for callers that check message_id
-    message_id: sent.length === 1 ? undefined : undefined,
-  });
+  return res.status(ok ? 200 : 502).json({ ok, sent: sent.length, failed: failed.length, recipients: sent, errors: failed.length ? failed : undefined });
 };
+
+function buildGenericText(alert) {
+  if (!alert) return '';
+  const sev = alert.sev === 'high' ? '🔴' : alert.sev === 'med' ? '🟡' : '🟢';
+  return `${sev} <b>[${alert.type || 'Alert'}]</b>\n${alert.text || ''}\n\n<i>Patrika Newsroom</i>`;
+}
