@@ -177,8 +177,9 @@ module.exports = async function handler(req, res) {
 
     const alerts = [];
     let idSeq = 1;
-    const push = (type, sev, text, link, count = null) =>
-      alerts.push({ id: idSeq++, type, sev, text, time: `${todayStr} ${nowLabel}`, link, count });
+    // branches = affected branch names (used by send-telegram to target the right REs)
+    const push = (type, sev, text, link, count = null, branches = []) =>
+      alerts.push({ id: idSeq++, type, sev, text, time: `${todayStr} ${nowLabel}`, link, count, branches });
 
     // ── 1. Edition delays today (≥30 min) ────────────────────────────────────
     const schedMap = {};
@@ -195,14 +196,15 @@ module.exports = async function handler(req, res) {
       sd.setHours(sh, sm, 0, 0);
       const releaseMs = pickLatestBefore230(r.all_times, todayStr);
       const delay = Math.min(Math.round((releaseMs - sd.getTime()) / 60000), 149);
-      return delay >= 30 ? { name: sched.edition_name || sched.unit || r.code, delay } : null;
+      return delay >= 30 ? { name: sched.edition_name || sched.unit || r.code, delay, branch: sched.unit } : null;
     }).filter(Boolean).sort((a, b) => b.delay - a.delay);
 
     if (lateEditions.length) {
       const top = lateEditions.slice(0, 3).map(e => `${e.name} (+${Math.floor(e.delay / 60)}h${String(e.delay % 60).padStart(2, '0')}m)`).join(', ');
+      const lateBranches = [...new Set(lateEditions.map(e => e.branch).filter(Boolean))];
       push('Edition Delay', 'high',
         `${lateEditions.length} edition${lateEditions.length > 1 ? 's' : ''} released 30+ min late today — worst: ${top}`,
-        '/production', lateEditions.length);
+        '/production', lateEditions.length, lateBranches);
     }
 
     // ── 2. Zero-story branches yesterday ─────────────────────────────────────
@@ -210,7 +212,7 @@ module.exports = async function handler(req, res) {
       const names = zeroBranches.slice(0, 5).map(b => `${b.branch} (${b.reporters} reporters)`).join(', ');
       push('Silent Branch', 'high',
         `${zeroBranches.length} branch${zeroBranches.length > 1 ? 'es' : ''} filed ZERO stories yesterday: ${names}`,
-        '/pages', zeroBranches.length);
+        '/pages', zeroBranches.length, zeroBranches.map(b => b.branch));
     }
 
     // ── 3. Overdue tasks ─────────────────────────────────────────────────────
@@ -266,7 +268,7 @@ module.exports = async function handler(req, res) {
       const top = leaveTodayRows.slice(0, 3).map(b => `${b.branch} (${b.cnt})`).join(', ');
       push('Staff On Leave', 'med',
         `${totalOnLeave} unique employees on leave (${lwMonStr} → ${d2Str}) — ${top}`,
-        '/hr', totalOnLeave);
+        '/hr', totalOnLeave, leaveTodayRows.map(b => b.branch));
     }
 
     // ── 9. Event plans pending review ────────────────────────────────────────
@@ -288,9 +290,10 @@ module.exports = async function handler(req, res) {
     // ── 11. Consecutive absence (2+ days) ────────────────────────────────────
     if (longAbsentRows.length) {
       const names = longAbsentRows.slice(0, 3).map(e => `${e.name} (${e.branch})`).join(', ');
+      const absentBranches = [...new Set(longAbsentRows.map(e => e.branch).filter(Boolean))];
       push('Extended Absence', 'high',
         `${longAbsentRows.length} reporter${longAbsentRows.length > 1 ? 's' : ''} absent 2+ consecutive days: ${names}`,
-        '/hr', longAbsentRows.length);
+        '/hr', longAbsentRows.length, absentBranches);
     }
 
     // All-clear entry so the feed is never empty

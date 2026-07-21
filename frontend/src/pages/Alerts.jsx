@@ -47,9 +47,9 @@ const CHANNELS = [
 // ── Custom hook — per-alert Telegram send status ──────────────────────────────
 function useTgStatus() {
   const [map, setMap] = useState({});
-  const set = (id, status, msg = '') =>
-    setMap((prev) => ({ ...prev, [id]: { status, msg } }));
-  const get = (id) => map[id] ?? { status: 'idle', msg: '' };
+  const set = (id, status, msg = '', recipients = []) =>
+    setMap((prev) => ({ ...prev, [id]: { status, msg, recipients } }));
+  const get = (id) => map[id] ?? { status: 'idle', msg: '', recipients: [] };
   return { set, get };
 }
 
@@ -141,14 +141,20 @@ export default function Alerts() {
   // ── Telegram helpers ──────────────────────────────────────────────────────
   const sendAlertToTelegram = useCallback(async (alert) => {
     tgStatus.set(alert.id, 'sending');
-    const res = await api.sendTelegramAlert({ alert, alert_id: alert.id, chat_id: chatIdInput || undefined });
-    if (res.ok) {
-      tgStatus.set(alert.id, 'sent');
-      setTimeout(() => loadDbLogs(1), 800);
-    } else {
-      tgStatus.set(alert.id, 'error', res.error || 'Send failed');
+    try {
+      const res = await api.sendTelegramAlert({ alert, alert_id: alert.id, chat_id: chatIdInput || undefined });
+      if (res.ok) {
+        tgStatus.set(alert.id, 'sent', '', res.recipients || []);
+        setTimeout(() => loadDbLogs(1), 800);
+        setTimeout(() => tgStatus.set(alert.id, 'idle'), 8000);
+      } else {
+        tgStatus.set(alert.id, 'error', res.error || 'Send failed');
+        setTimeout(() => tgStatus.set(alert.id, 'idle'), 5000);
+      }
+    } catch (err) {
+      tgStatus.set(alert.id, 'error', err.message || 'Send failed');
+      setTimeout(() => tgStatus.set(alert.id, 'idle'), 5000);
     }
-    setTimeout(() => tgStatus.set(alert.id, 'idle'), 4000);
   }, [chatIdInput, loadDbLogs]);
 
   const sendCustomMessage = async () => {
@@ -217,19 +223,52 @@ export default function Alerts() {
 
   // ── Per-alert Telegram action button ─────────────────────────────────────
   function TgButton({ alert }) {
-    const { status, msg } = tgStatus.get(alert.id);
-    if (status === 'sending') return <Loader2 size={15} className="animate-spin" style={{ color: 'var(--brand)' }} />;
-    if (status === 'sent')    return <CheckCircle2 size={15} className="text-green-500" />;
-    if (status === 'error')   return <span title={msg} className="cursor-help"><XCircle size={15} className="text-red-500" /></span>;
+    const { status, msg, recipients } = tgStatus.get(alert.id);
+    const hasBranches = (alert.branches || []).length > 0;
+
+    if (status === 'sending') return (
+      <div className="flex items-center gap-1 text-xs" style={{ color: 'var(--brand)' }}>
+        <Loader2 size={13} className="animate-spin" /> Sending…
+      </div>
+    );
+
+    if (status === 'sent') return (
+      <div className="flex flex-col items-end gap-1">
+        <div className="flex items-center gap-1 text-xs font-semibold text-green-600">
+          <CheckCircle2 size={13} /> Sent to {recipients.length} {recipients.length === 1 ? 'person' : 'people'}
+        </div>
+        {recipients.length > 0 && (
+          <div className="text-xs text-right leading-tight" style={{ color: 'var(--muted)', maxWidth: 180 }}>
+            {recipients.map(r => r.branch || r.name).filter(Boolean).join(', ')}
+          </div>
+        )}
+      </div>
+    );
+
+    if (status === 'error') return (
+      <span title={msg} className="flex items-center gap-1 text-xs text-red-500 cursor-help">
+        <XCircle size={13} /> Failed
+      </span>
+    );
+
     return (
-      <button
-        title="Forward to Telegram"
-        onClick={() => sendAlertToTelegram(alert)}
-        className="flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold transition hover:opacity-75"
-        style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}
-      >
-        <Send size={11} /> Telegram
-      </button>
+      <div className="flex flex-col items-end gap-1">
+        <button
+          title={hasBranches
+            ? `Send to branch REs & State Heads (${alert.branches.length} branch${alert.branches.length > 1 ? 'es' : ''})`
+            : 'Send to configured Telegram chat'}
+          onClick={() => sendAlertToTelegram(alert)}
+          className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold transition hover:opacity-75"
+          style={{ background: '#0088cc', color: '#fff', border: 'none' }}
+        >
+          <Send size={11} /> Telegram
+        </button>
+        {hasBranches && (
+          <div className="text-xs text-right leading-tight" style={{ color: 'var(--muted)', maxWidth: 180 }}>
+            → {alert.branches.slice(0, 3).join(', ')}{alert.branches.length > 3 ? ` +${alert.branches.length - 3}` : ''}
+          </div>
+        )}
+      </div>
     );
   }
 
