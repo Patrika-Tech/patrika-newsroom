@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Sparkles, Send, Copy, Check, RefreshCw, TrendingUp, TrendingDown,
-  Minus, AlertTriangle, ShieldCheck, Users, BookOpen, Camera,
-  FileText, UserX, ChevronDown, ChevronUp, Loader2,
+  Minus, ShieldCheck, Users, BookOpen, Camera,
+  FileText, UserX, Loader2,
 } from 'lucide-react';
 import { useApp }                    from '../context/AppContext.jsx';
 import { api }                       from '../api/client.js';
@@ -33,20 +33,6 @@ function StatTile({ icon: Icon, label, value, sub, color = 'var(--brand)', warn 
         {sub && <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>{sub}</div>}
       </div>
     </div>
-  );
-}
-
-// ── Severity badge ────────────────────────────────────────────────────────────
-function SevBadge({ sev }) {
-  const cfg = {
-    critical: { bg: '#ef444418', color: '#ef4444', label: 'Critical' },
-    warn:     { bg: '#f5950018', color: '#f59500', label: 'Low'      },
-    ok:       { bg: '#22c55e18', color: '#22c55e', label: 'OK'       },
-  }[sev] || { bg: 'var(--bg)', color: 'var(--muted)', label: sev };
-  return (
-    <span className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: cfg.bg, color: cfg.color }}>
-      {cfg.label}
-    </span>
   );
 }
 
@@ -126,7 +112,6 @@ export default function AiInsights() {
   const [refreshing, setRefreshing] = useState(false);
 
   const [trendTab, setTrendTab] = useState('up');
-  const [gapLimit, setGapLimit] = useState(5);
 
   // Chat state
   const [msgs,  setMsgs]  = useState([{
@@ -201,7 +186,6 @@ export default function AiInsights() {
 
   // ── Derived ────────────────────────────────────────────────────────────────
   const stats  = fastData?.briefingStats;
-  const gaps   = fastData?.contentGaps  || [];
   const qcRows = fastData?.qcHotspots   || [];
   const trends = trendsData?.reporterTrends || [];
   const maxQc  = Math.max(...qcRows.map(r => r.mistakes7d), 1);
@@ -254,70 +238,33 @@ export default function AiInsights() {
         </div>
       )}
 
-      {/* ── Content Gaps & QC Hotspots ───────────────────────────────────────── */}
-      <div className="grid gap-4 mb-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
-
-        {/* Content Coverage Gaps */}
-        <SectionCard title={<span className="flex items-center gap-1.5"><AlertTriangle size={13} style={{ color: '#f59e0b' }} />Content Coverage Gaps</span>}>
-          {loading ? (
-            <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} h={36} rounded="rounded-lg" />)}</div>
-          ) : gaps.length === 0 ? (
-            <p className="text-sm text-center py-4" style={{ color: 'var(--muted)' }}>No coverage gaps</p>
-          ) : (
-            <>
-              <div className="space-y-1.5">
-                {gaps.slice(0, gapLimit).map(g => (
-                  <div key={g.beat} className="flex items-center gap-3 rounded-lg px-3 py-2" style={{ background: 'var(--bg)' }}>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>{g.beat}</div>
-                      <div className="text-xs" style={{ color: 'var(--muted)' }}>
-                        {g.reporters} reporters · {g.stories3d} stories (3d)
-                        {g.lastStory ? ` · last: ${g.lastStory}` : ''}
-                      </div>
-                    </div>
-                    <SevBadge sev={g.severity} />
-                  </div>
-                ))}
-              </div>
-              {gaps.length > 5 && (
-                <button
-                  className="mt-2 text-xs w-full flex items-center justify-center gap-1 py-1"
-                  style={{ color: 'var(--muted)' }}
-                  onClick={() => setGapLimit(l => l === 5 ? gaps.length : 5)}
-                >
-                  {gapLimit === 5 ? <><ChevronDown size={12} /> Show all {gaps.length}</> : <><ChevronUp size={12} /> Show less</>}
-                </button>
-              )}
-            </>
-          )}
-        </SectionCard>
-
-        {/* QC Hotspots */}
-        <SectionCard title={<span className="flex items-center gap-1.5"><ShieldCheck size={13} style={{ color: '#ef4444' }} />QC Hotspots (7 days)</span>}>
-          {loading ? (
-            <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} h={44} rounded="rounded-lg" />)}</div>
-          ) : qcRows.length === 0 ? (
-            <p className="text-sm text-center py-4" style={{ color: 'var(--muted)' }}>No QC data</p>
-          ) : (
-            <div className="space-y-2">
-              {qcRows.map(r => (
-                <div key={r.state} className="rounded-lg px-3 py-2" style={{ background: 'var(--bg)' }}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium" style={{ color: 'var(--text)' }}>{r.state}</span>
-                    <span className="text-xs font-bold" style={{ color: r.mistakes7d > 30 ? '#ef4444' : r.mistakes7d > 15 ? '#f59e0b' : '#22c55e' }}>
-                      {fmt(r.mistakes7d)} mistakes
-                    </span>
-                  </div>
-                  <MiniBar value={r.mistakes7d} max={maxQc} color={r.mistakes7d > 30 ? '#ef4444' : r.mistakes7d > 15 ? '#f59e0b' : '#22c55e'} />
-                  <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>
-                    {r.checks} checks · avg {r.avgPerCheck}/check
-                  </div>
+      {/* ── QC Hotspots ───────────────────────────────────────────────────────── */}
+      <SectionCard title={<span className="flex items-center gap-1.5"><ShieldCheck size={13} style={{ color: '#ef4444' }} />QC Hotspots (7 days)</span>} className="mb-4">
+        {loading ? (
+          <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px,1fr))' }}>
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} h={64} rounded="rounded-lg" />)}
+          </div>
+        ) : qcRows.length === 0 ? (
+          <p className="text-sm text-center py-4" style={{ color: 'var(--muted)' }}>No QC data</p>
+        ) : (
+          <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px,1fr))' }}>
+            {qcRows.map(r => (
+              <div key={r.state} className="rounded-lg px-3 py-2" style={{ background: 'var(--bg)' }}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-medium" style={{ color: 'var(--text)' }}>{r.state}</span>
+                  <span className="text-xs font-bold" style={{ color: r.mistakes7d > 30 ? '#ef4444' : r.mistakes7d > 15 ? '#f59e0b' : '#22c55e' }}>
+                    {fmt(r.mistakes7d)} mistakes
+                  </span>
                 </div>
-              ))}
-            </div>
-          )}
-        </SectionCard>
-      </div>
+                <MiniBar value={r.mistakes7d} max={maxQc} color={r.mistakes7d > 30 ? '#ef4444' : r.mistakes7d > 15 ? '#f59e0b' : '#22c55e'} />
+                <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>
+                  {r.checks} checks · avg {r.avgPerCheck}/check
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </SectionCard>
 
       {/* ── Reporter Trends ───────────────────────────────────────────────────── */}
       <SectionCard
