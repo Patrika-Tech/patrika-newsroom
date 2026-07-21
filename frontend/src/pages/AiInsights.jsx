@@ -68,22 +68,28 @@ function Skeleton({ h = 16, w = '100%', rounded = 'rounded' }) {
 }
 
 // ── Branch row card ───────────────────────────────────────────────────────────
+// All metrics are per-reporter averages for fair comparison across branch sizes
 const RANK_META = {
-  score:       { label: 'Overall',     key: 'score',       higher: true,  fmt: v => v + ' pts', color: '#6366f1' },
-  stories:     { label: 'Stories',     key: 'stories',     higher: true,  fmt: v => fmt(v),      color: '#0ea5e9' },
-  active_rate: { label: 'Active Rate', key: 'active_rate', higher: true,  fmt: v => v + '%',     color: '#22c55e' },
-  qc_mistakes: { label: 'QC',          key: 'qc_mistakes', higher: false, fmt: v => fmt(v),      color: '#ef4444' },
-  stories_per_rep: { label: 'Stories/Reporter', key: 'stories_per_rep', higher: true, fmt: v => v, color: '#f59e0b' },
+  score:           { label: 'Overall',     key: 'score',           higher: true,  fmt: v => v + ' pts',    color: '#6366f1' },
+  stories_per_rep: { label: 'Stories/Rep', key: 'stories_per_rep', higher: true,  fmt: v => v + '/rep',    color: '#0ea5e9' },
+  active_rate:     { label: 'Active Rate', key: 'active_rate',     higher: true,  fmt: v => v + '%',        color: '#22c55e' },
+  leave_rate:      { label: 'Leave Rate',  key: 'leave_rate',      higher: false, fmt: v => v + '% leave',  color: '#f59e0b' },
+  qc_per_rep:      { label: 'QC/Rep',      key: 'qc_per_rep',      higher: false, fmt: v => v + '/rep',    color: '#ef4444' },
 };
 
-function BranchCard({ rank, b, rankKey, isTop, maxStories, maxQc }) {
+function BranchCard({ rank, b, rankKey, isTop, maxSPR, maxQPR }) {
   const meta    = RANK_META[rankKey] || RANK_META.score;
   const primary = b[meta.key];
-  const barVal  = rankKey === 'qc_mistakes' ? b.qc_mistakes : rankKey === 'active_rate' ? b.active_rate : b.stories;
-  const barMax  = rankKey === 'qc_mistakes' ? maxQc : rankKey === 'active_rate' ? 100 : maxStories;
-  const barColor = isTop
-    ? (rankKey === 'qc_mistakes' ? '#ef4444' : meta.color)
-    : (rankKey === 'qc_mistakes' ? '#22c55e' : '#ef4444');
+
+  // Bar shows the ranked metric; for "lower is better" metrics, invert bar so top = long bar
+  let barVal, barMax;
+  if (rankKey === 'active_rate')     { barVal = b.active_rate;     barMax = 100; }
+  else if (rankKey === 'leave_rate') { barVal = 100 - b.leave_rate; barMax = 100; }
+  else if (rankKey === 'qc_per_rep') { barVal = maxQPR - b.qc_per_rep; barMax = maxQPR; }
+  else if (rankKey === 'stories_per_rep') { barVal = b.stories_per_rep; barMax = maxSPR; }
+  else                               { barVal = b.score;           barMax = 100; }
+
+  const barColor = isTop ? meta.color : (meta.higher ? '#ef4444' : '#22c55e');
 
   return (
     <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
@@ -95,10 +101,11 @@ function BranchCard({ rank, b, rankKey, isTop, maxStories, maxQc }) {
         </div>
 
         <div className="flex-1 min-w-0">
-          {/* Name + state */}
+          {/* Name + state + reporter count */}
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-sm font-semibold" style={{ color: 'var(--text)' }}>{b.branch}</span>
             <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'var(--border)', color: 'var(--muted)' }}>{b.state}</span>
+            <span className="text-xs" style={{ color: 'var(--muted)' }}>{b.total_reporters} reps</span>
           </div>
 
           {/* Mini bar */}
@@ -106,16 +113,17 @@ function BranchCard({ rank, b, rankKey, isTop, maxStories, maxQc }) {
             <MiniBar value={barVal} max={barMax} color={barColor} />
           </div>
 
-          {/* 4 metric pills */}
+          {/* Per-reporter average metrics */}
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs" style={{ color: 'var(--muted)' }}>
-            <span title="Stories (7d)">📰 {fmt(b.stories)}</span>
-            <span title="Photos (7d)">📷 {fmt(b.photos)}</span>
-            <span title="Active reporters / Total" style={{ color: b.active_rate < 50 ? '#f59e0b' : 'inherit' }}>
-              👥 {b.active_reporters}/{b.total_reporters} ({b.active_rate}%)
+            <span title="Stories per reporter (7d)">📰 {b.stories_per_rep}/rep</span>
+            <span title="Active reporters %" style={{ color: b.active_rate < 50 ? '#f59e0b' : 'inherit' }}>
+              👥 {b.active_rate}% active
             </span>
-            <span title="Stories per reporter">✍️ {b.stories_per_rep}/rep</span>
-            <span title="QC mistakes (7d)" style={{ color: b.qc_mistakes > 20 ? '#ef4444' : b.qc_mistakes > 10 ? '#f59e0b' : '#22c55e' }}>
-              🔍 QC {b.qc_mistakes}
+            <span title="Reporters on leave %" style={{ color: b.leave_rate > 30 ? '#ef4444' : b.leave_rate > 15 ? '#f59e0b' : 'inherit' }}>
+              🏖 {b.leave_rate}% leave
+            </span>
+            <span title="QC mistakes per reporter" style={{ color: b.qc_per_rep > 3 ? '#ef4444' : b.qc_per_rep > 1 ? '#f59e0b' : '#22c55e' }}>
+              🔍 {b.qc_per_rep}/rep QC
             </span>
           </div>
         </div>
@@ -229,18 +237,21 @@ export default function AiInsights() {
     down: trends.filter(r => r.trend === 'down').length,
   };
 
-  // Branch ranking
+  // Branch ranking — all metrics are per-reporter averages
   const meta = RANK_META[rankBy] || RANK_META.score;
   const sorted = [...branches].sort((a, b) =>
     meta.higher ? b[meta.key] - a[meta.key] : a[meta.key] - b[meta.key]
   );
   const topBranches    = sorted.slice(0, 6);
-  // For "need improvement": reverse the sort
   const bottomBranches = [...branches].sort((a, b) =>
     meta.higher ? a[meta.key] - b[meta.key] : b[meta.key] - a[meta.key]
   ).slice(0, 6);
-  const maxStories = Math.max(...branches.map(b => b.stories), 1);
-  const maxBranchQc = Math.max(...branches.map(b => b.qc_mistakes), 1);
+  const maxSPR    = Math.max(...branches.map(b => b.stories_per_rep), 0.1);
+  const maxQPR    = Math.max(...branches.map(b => b.qc_per_rep),      0.1);
+  const perfWindow = fastData?.branchPerfWindow;
+  const perfLabel  = perfWindow
+    ? `${perfWindow.from.slice(5)} to ${perfWindow.to.slice(5)} (${perfWindow.days}d, d‑2)`
+    : '7 days (d‑2)';
 
   return (
     <div>
@@ -283,7 +294,7 @@ export default function AiInsights() {
 
       {/* ── Branch Performance ───────────────────────────────────────────────── */}
       <SectionCard
-        title={<span className="flex items-center gap-1.5"><BarChart2 size={13} style={{ color: '#6366f1' }} />Branch Performance — 7 days (d‑2)</span>}
+        title={<span className="flex items-center gap-1.5"><BarChart2 size={13} style={{ color: '#6366f1' }} />Branch Performance — avg/reporter · {perfLabel}</span>}
         className="mb-4"
         action={
           <div className="flex gap-1 flex-wrap">
@@ -316,7 +327,7 @@ export default function AiInsights() {
               <div className="space-y-2">
                 {topBranches.map((b, i) => (
                   <BranchCard key={b.branch} rank={i + 1} b={b} rankKey={rankBy} isTop={true}
-                    maxStories={maxStories} maxQc={maxBranchQc} />
+                    maxSPR={maxSPR} maxQPR={maxQPR} />
                 ))}
               </div>
             </div>
@@ -329,22 +340,30 @@ export default function AiInsights() {
               <div className="space-y-2">
                 {bottomBranches.map((b, i) => (
                   <BranchCard key={b.branch} rank={i + 1} b={b} rankKey={rankBy} isTop={false}
-                    maxStories={maxStories} maxQc={maxBranchQc} />
+                    maxSPR={maxSPR} maxQPR={maxQPR} />
                 ))}
               </div>
             </div>
           </div>
         )}
 
-        {/* Summary stats bar */}
-        {!loading && branches.length > 0 && (
-          <div className="mt-4 pt-3 flex flex-wrap gap-4 text-xs" style={{ borderTop: '1px solid var(--border)', color: 'var(--muted)' }}>
-            <span>{branches.length} branches tracked</span>
-            <span>Total stories: <strong style={{ color: 'var(--text)' }}>{fmt(branches.reduce((s, b) => s + b.stories, 0))}</strong></span>
-            <span>Avg active rate: <strong style={{ color: 'var(--text)' }}>{Math.round(branches.reduce((s, b) => s + b.active_rate, 0) / branches.length)}%</strong></span>
-            <span>Total QC mistakes: <strong style={{ color: 'var(--text)' }}>{fmt(branches.reduce((s, b) => s + b.qc_mistakes, 0))}</strong></span>
-          </div>
-        )}
+        {/* Summary stats bar — averages across all branches */}
+        {!loading && branches.length > 0 && (() => {
+          const n    = branches.length;
+          const avgSPR = (branches.reduce((s, b) => s + b.stories_per_rep, 0) / n).toFixed(1);
+          const avgAR  = Math.round(branches.reduce((s, b) => s + b.active_rate, 0)  / n);
+          const avgLR  = Math.round(branches.reduce((s, b) => s + b.leave_rate,  0)  / n);
+          const avgQPR = (branches.reduce((s, b) => s + b.qc_per_rep, 0) / n).toFixed(1);
+          return (
+            <div className="mt-4 pt-3 flex flex-wrap gap-4 text-xs" style={{ borderTop: '1px solid var(--border)', color: 'var(--muted)' }}>
+              <span>{n} branches · avg across all</span>
+              <span>📰 <strong style={{ color: 'var(--text)' }}>{avgSPR}</strong> stories/rep</span>
+              <span>👥 <strong style={{ color: 'var(--text)' }}>{avgAR}%</strong> active rate</span>
+              <span>🏖 <strong style={{ color: 'var(--text)' }}>{avgLR}%</strong> leave rate</span>
+              <span>🔍 <strong style={{ color: 'var(--text)' }}>{avgQPR}</strong> QC/rep</span>
+            </div>
+          );
+        })()}
       </SectionCard>
 
       {/* ── QC Hotspots ─────────────────────────────────────────────────────── */}

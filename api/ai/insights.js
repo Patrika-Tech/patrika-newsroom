@@ -56,13 +56,16 @@ function setCache(cacheKey, data) {
 
 // ── DB computation ───────────────────────────────────────────────────────────
 
+const LEAVE_EXCL = `'P','MP','WFH','OD','T','TL','SU','ES','SPL','WOP','PH','WOHP','H','WO','A','CF'`;
+const BRANCH_DAYS = 7; // d-2 window length
+
 async function computeFast(sF, bF) {
   const todayStr = toIST(Date.now());
   const ydayStr  = toIST(Date.now() - 864e5);
   const day3Str  = toIST(Date.now() - 3  * 864e5);
   const day7Str  = toIST(Date.now() - 7  * 864e5);
-  // 7-day window ending at d-2: from 9 days ago up to (but not including) yesterday
-  const day9Str  = toIST(Date.now() - 9  * 864e5);
+  // 7-day window ending at d-2: July 13–19 (today - 8 days → today - 1 day exclusive)
+  const day8Str  = toIST(Date.now() - 8  * 864e5);
 
   const ecmsExtra = [
     sF ? 'AND Pan_no IN (SELECT pan_no FROM `user` WHERE State = ?)'  : '',
@@ -72,7 +75,7 @@ async function computeFast(sF, bF) {
   const qcExtra    = sF ? ' AND state = ?' : '';
   const uF         = [...(sF ? [sF] : []), ...(bF ? [bF] : [])];
 
-  const [ydayStats, gapRows, qcHotRows, topYday, zeroRow, branchRows, branchQcRows] = await Promise.all([
+  const [ydayStats, gapRows, qcHotRows, topYday, zeroRow, branchRows, branchQcRows, branchLeaveRows] = await Promise.all([
 
     query(`SELECT SUM(No_Story) AS stories, SUM(No_Photo) AS photos,
                   COUNT(DISTINCT Pan_no) AS reporters, SUM(No_Words) AS words
@@ -132,7 +135,7 @@ async function computeFast(sF, bF) {
              AND act.Pan_no IS NULL`,
           [ydayStr, todayStr, ...uF]).catch(() => [{ cnt: 0 }]),
 
-    // Branch performance: 7 days ending at d-2 (day9 → yday exclusive)
+    // Branch performance: 7-day window ending at d-2 (Jul 13–19: day8 → yday exclusive)
     query(`SELECT u.Branch AS branch, u.State AS state,
                   COUNT(DISTINCT u.pan_no)                                            AS total_reporters,
                   COALESCE(SUM(e.No_Story), 0)                                        AS stories,
@@ -151,7 +154,7 @@ async function computeFast(sF, bF) {
            HAVING total_reporters >= 2
            ORDER BY stories DESC
            LIMIT 60`,
-          [day9Str, ydayStr, ...uF]).catch(() => []),
+          [day8Str, ydayStr, ...uF]).catch(() => []),
 
     // QC per branch: same 7-day window
     query(`SELECT branch, SUM(no_of_mistake) AS qc_mistakes
@@ -160,7 +163,20 @@ async function computeFast(sF, bF) {
              ${sF ? 'AND state = ?'  : ''}
              ${bF ? 'AND branch = ?' : ''}
            GROUP BY branch`,
-          [day9Str, ydayStr, ...uF]).catch(() => []),
+          [day8Str, ydayStr, ...uF]).catch(() => []),
+
+    // Leaves per branch: reporters on actual leave in the 7-day window
+    query(`SELECT u.Branch AS branch, COUNT(DISTINCT h.pan_no) AS on_leave
+           FROM hrms_data h
+           JOIN \`user\` u ON UPPER(TRIM(u.pan_no)) = UPPER(TRIM(h.pan_no))
+           WHERE h.att_date >= ? AND h.att_date < ?
+             AND UPPER(TRIM(h.att_type)) NOT IN (${LEAVE_EXCL})
+             AND (u.is_emp_working = 1 OR u.Status IN ('Working','Active'))
+             AND (LOWER(TRIM(u.Story_Type)) LIKE '%reporter%' OR LOWER(TRIM(u.Story_Type)) = 'stringer')
+             ${sF ? 'AND u.State = ?'  : ''}
+             ${bF ? 'AND u.Branch = ?' : ''}
+           GROUP BY u.Branch`,
+          [day8Str, ydayStr, ...uF]).catch(() => []),
   ]);
 
   const contentGaps = gapRows
@@ -220,42 +236,59 @@ async function computeFast(sF, bF) {
     } catch (e) { console.error('[ai/insights] briefing:', e.message); }
   }
 
-  // Branch performance: merge stories + QC, compute composite score
+  // Branch performance: merge stories + QC + leaves, compute composite score using averages
   const qcByBranch = {};
   branchQcRows.forEach(r => {
     qcByBranch[(r.branch || '').toLowerCase().trim()] = Number(r.qc_mistakes || 0);
   });
+  const leaveByBranch = {};
+  branchLeaveRows.forEach(r => {
+    leaveByBranch[(r.branch || '').toLowerCase().trim()] = Number(r.on_leave || 0);
+  });
 
   const branchPerformance = branchRows.map(r => {
+    const total    = Math.max(Number(r.total_reporters  || 1), 1);
+    const active   = Number(r.active_reporters || 0);
     const stories  = Number(r.stories          || 0);
     const photos   = Number(r.photos           || 0);
-    const words    = Number(r.words            || 0);
-    const total    = Number(r.total_reporters  || 1);
-    const active   = Number(r.active_reporters || 0);
-    const qc       = qcByBranch[(r.branch || '').toLowerCase().trim()] || 0;
-    const activeRate = Math.round((active / total) * 100);
-    const storiesPerRep = total > 0 ? Math.round((stories / total) * 10) / 10 : 0;
+    const bKey     = (r.branch || '').toLowerCase().trim();
+    const qc       = qcByBranch[bKey] || 0;
+    const onLeave  = leaveByBranch[bKey] || 0;
+
+    // Per-reporter averages (over BRANCH_DAYS days)
+    const storiesPerRep = Math.round((stories  / total) * 10) / 10; // total over 7d per rep
+    const photosPerRep  = Math.round((photos   / total) * 10) / 10;
+    const activeRate    = Math.round((active   / total) * 100);
+    const leaveRate     = Math.round((onLeave  / total) * 100);
+    const qcPerRep      = Math.round((qc       / total) * 10) / 10;
+
     return {
       branch: r.branch,
       state:  r.state || '—',
-      stories, photos, words,
       total_reporters:  total,
       active_reporters: active,
-      active_rate:      activeRate,
       stories_per_rep:  storiesPerRep,
+      photos_per_rep:   photosPerRep,
+      active_rate:      activeRate,
+      leave_rate:       leaveRate,
+      qc_per_rep:       qcPerRep,
       qc_mistakes:      qc,
     };
   });
 
-  // Compute min/max for normalisation
+  // Normalise per-reporter averages for composite score
+  // Higher = better: stories_per_rep, active_rate
+  // Lower  = better: leave_rate, qc_per_rep
   if (branchPerformance.length) {
-    const maxS  = Math.max(...branchPerformance.map(b => b.stories), 1);
-    const maxQ  = Math.max(...branchPerformance.map(b => b.qc_mistakes), 1);
+    const maxSPR = Math.max(...branchPerformance.map(b => b.stories_per_rep), 0.1);
+    const maxQPR = Math.max(...branchPerformance.map(b => b.qc_per_rep),      0.1);
+    const maxLR  = Math.max(...branchPerformance.map(b => b.leave_rate),       1);
     branchPerformance.forEach(b => {
-      const sN = b.stories / maxS;
-      const aN = b.active_rate / 100;
-      const qN = b.qc_mistakes / maxQ;
-      b.score = Math.round(sN * 50 + aN * 30 + (1 - qN) * 20);
+      const sN = b.stories_per_rep  / maxSPR;        // 0–1, higher = better (weight 40)
+      const aN = b.active_rate      / 100;            // 0–1, higher = better (weight 25)
+      const lN = 1 - (b.leave_rate  / maxLR);        // 0–1, lower leave = better (weight 20)
+      const qN = 1 - (b.qc_per_rep  / maxQPR);       // 0–1, lower QC = better (weight 15)
+      b.score = Math.round(sN * 40 + aN * 25 + lN * 20 + qN * 15);
     });
   }
 
@@ -263,6 +296,7 @@ async function computeFast(sF, bF) {
     briefing,
     briefingStats,
     contentGaps,
+    branchPerfWindow: { from: day8Str, to: ydayStr, days: BRANCH_DAYS },
     qcHotspots: qcHotRows.map(r => ({
       state:       r.state || '—',
       mistakes7d:  Number(r.mistakes7d  || 0),

@@ -1623,163 +1623,6 @@ function StoriesDashboard({ allStories, date, loading,
           color="#16a34a" />
       </div>
 
-      {/* ══ CATEGORY SECTION ══════════════════════════════════════════════ */}
-      <div className="space-y-3">
-        <SectionHeader
-          icon={Globe} color="#7c3aed"
-          title="Category Activity"
-          meta={`${catRows.length} categories · ${allStories.length} stories`}
-          right={date}
-        />
-
-        {/* Category cards grid */}
-        {catRows.length > 0 && (
-          <div className="grid gap-2.5 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-            {catRows.map((c, i) => (
-              <CatCard key={c.cat}
-                cat={c.cat}
-                total={c.total}
-                maxTotal={maxCatTotal}
-                color={CAT_PALETTE[i % CAT_PALETTE.length]}
-                isSelected={selectedCategory === c.cat}
-                onClick={() => setSelectedCategory(selectedCategory === c.cat ? null : c.cat)}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Category stories panel */}
-        {selectedCategory && (() => {
-          const catColor = CAT_PALETTE[catRows.findIndex(c => c.cat === selectedCategory) % CAT_PALETTE.length];
-          const catStories = allStories
-            .filter(s => getCat(s) === selectedCategory)
-            .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-          return (
-            <div className="rounded-xl border overflow-hidden"
-              style={{ borderColor: `${catColor}40`, background: 'var(--surface)' }}>
-              <div className="flex items-center justify-between px-4 py-3"
-                style={{ background: `linear-gradient(90deg,${catColor}0d,${catColor}1a)`, borderBottom: `1px solid ${catColor}30` }}>
-                <div className="flex items-center gap-2">
-                  <div className="rounded-lg p-1.5" style={{ background: `${catColor}22` }}>
-                    <Globe size={14} style={{ color: catColor }} />
-                  </div>
-                  <div>
-                    <p className="font-bold text-sm capitalize" style={{ color: catColor }}>{selectedCategory}</p>
-                    <p className="text-xs" style={{ color: 'var(--muted)' }}>
-                      {catStories.length} {catStories.length === 1 ? 'story' : 'stories'} · {date}
-                    </p>
-                  </div>
-                </div>
-                <button onClick={() => setSelectedCategory(null)}
-                  className="rounded-full p-1 hover:bg-black/5 transition-colors" style={{ color: catColor }}>
-                  <X size={16} />
-                </button>
-              </div>
-              <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
-                {catStories.map((s, i) => (
-                  <div key={i} className="flex items-start gap-3 px-4 py-2.5 hover:bg-black/[0.02] transition-colors">
-                    <span className="text-xs font-mono mt-0.5 flex-shrink-0 tabular-nums"
-                      style={{ color: 'var(--muted)', minWidth: 40 }}>
-                      {s.time || '—'}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      {s.url
-                        ? <a href={s.url} target="_blank" rel="noopener noreferrer"
-                            className="text-sm font-medium leading-snug hover:underline line-clamp-2"
-                            style={{ color: 'var(--text)' }}>{s.title}</a>
-                        : <p className="text-sm font-medium leading-snug line-clamp-2">{s.title}</p>
-                      }
-                      {s.name && (
-                        <span className="text-xs mt-0.5 inline-flex items-center gap-1" style={{ color: '#16a34a' }}>
-                          <Users2 size={10} />
-                          {s.name}
-                        </span>
-                      )}
-                    </div>
-                    {s.url && (
-                      <a href={s.url} target="_blank" rel="noopener noreferrer"
-                        className="flex-shrink-0 mt-0.5 opacity-40 hover:opacity-100 transition-opacity">
-                        <ExternalLink size={13} style={{ color: 'var(--muted)' }} />
-                      </a>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* Toggle: hourly heatmap */}
-        {activeHours.length > 0 && (
-          <>
-            <button
-              onClick={() => setShowCatHeat(v => !v)}
-              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
-              style={{ color: '#7c3aed', background: '#7c3aed12', border: '1px solid #7c3aed30' }}>
-              <BarChart3 size={12} />
-              {showCatHeat ? 'Hide' : 'Show'} Hourly Heatmap
-              {showCatHeat ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-            </button>
-
-            {showCatHeat && (
-              <SectionCard title={
-                <span className="flex items-center gap-2">
-                  <Globe size={14} style={{ color: '#7c3aed' }} />
-                  Category-wise Hourly Publishing · {date}
-                </span>
-              }>
-                <div className="overflow-x-auto">
-                  <table className="text-xs" style={{ borderCollapse: 'separate', borderSpacing: '2px 3px' }}>
-                    <thead>
-                      <tr>
-                        <th className="text-left pr-4 pb-2 font-semibold whitespace-nowrap"
-                          style={{ color: 'var(--muted)', minWidth: 160 }}>Category</th>
-                        {activeHours.map(h => (
-                          <th key={h} className="pb-2 text-center font-medium"
-                            style={{ color: 'var(--muted)', minWidth: 38 }}>
-                            {String(h).padStart(2, '0')}
-                          </th>
-                        ))}
-                        <th className="pb-2 pl-4 font-bold text-right" style={{ minWidth: 52 }}>Total</th>
-                      </tr>
-                      <tr>
-                        <td className="pr-4 pb-2 font-semibold" style={{ color: '#7c3aed' }}>All categories</td>
-                        {activeHours.map(h => (
-                          <td key={h} className="pb-2 text-center">
-                            <HeatCell count={hourTotals[h] || 0} max={maxHourTotal} />
-                          </td>
-                        ))}
-                        <td className="pb-2 pl-4 text-right font-bold" style={{ color: '#7c3aed' }}>{allStories.length}</td>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {catRows.map((c, i) => (
-                        <tr key={c.cat}>
-                          <td className="pr-4 py-0.5 capitalize whitespace-nowrap flex items-center gap-1.5">
-                            <span className="inline-block w-2 h-2 rounded-full flex-shrink-0"
-                              style={{ background: CAT_PALETTE[i % CAT_PALETTE.length] }} />
-                            {c.cat}
-                          </td>
-                          {activeHours.map(h => (
-                            <td key={h} className="py-0.5 text-center">
-                              <HeatCell count={c.hourCounts[h] || 0} max={maxCatHour} />
-                            </td>
-                          ))}
-                          <td className="py-0.5 pl-4 text-right font-semibold" style={{ color: '#7c3aed' }}>
-                            {c.total}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <HeatLegend />
-              </SectionCard>
-            )}
-          </>
-        )}
-      </div>
-
       {/* ══ EDITOR SECTION ════════════════════════════════════════════════ */}
       <div className="space-y-3">
         <SectionHeader
@@ -1952,6 +1795,163 @@ function StoriesDashboard({ allStories, date, loading,
                   </table>
                 </div>
                 <HeatLegend extra={`${namedCount} / ${allStories.length} stories attributed`} />
+              </SectionCard>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* ══ CATEGORY SECTION ══════════════════════════════════════════════ */}
+      <div className="space-y-3">
+        <SectionHeader
+          icon={Globe} color="#7c3aed"
+          title="Category Activity"
+          meta={`${catRows.length} categories · ${allStories.length} stories`}
+          right={date}
+        />
+
+        {/* Category cards grid */}
+        {catRows.length > 0 && (
+          <div className="grid gap-2.5 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+            {catRows.map((c, i) => (
+              <CatCard key={c.cat}
+                cat={c.cat}
+                total={c.total}
+                maxTotal={maxCatTotal}
+                color={CAT_PALETTE[i % CAT_PALETTE.length]}
+                isSelected={selectedCategory === c.cat}
+                onClick={() => setSelectedCategory(selectedCategory === c.cat ? null : c.cat)}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Category stories panel */}
+        {selectedCategory && (() => {
+          const catColor = CAT_PALETTE[catRows.findIndex(c => c.cat === selectedCategory) % CAT_PALETTE.length];
+          const catStories = allStories
+            .filter(s => getCat(s) === selectedCategory)
+            .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+          return (
+            <div className="rounded-xl border overflow-hidden"
+              style={{ borderColor: `${catColor}40`, background: 'var(--surface)' }}>
+              <div className="flex items-center justify-between px-4 py-3"
+                style={{ background: `linear-gradient(90deg,${catColor}0d,${catColor}1a)`, borderBottom: `1px solid ${catColor}30` }}>
+                <div className="flex items-center gap-2">
+                  <div className="rounded-lg p-1.5" style={{ background: `${catColor}22` }}>
+                    <Globe size={14} style={{ color: catColor }} />
+                  </div>
+                  <div>
+                    <p className="font-bold text-sm capitalize" style={{ color: catColor }}>{selectedCategory}</p>
+                    <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                      {catStories.length} {catStories.length === 1 ? 'story' : 'stories'} · {date}
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => setSelectedCategory(null)}
+                  className="rounded-full p-1 hover:bg-black/5 transition-colors" style={{ color: catColor }}>
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                {catStories.map((s, i) => (
+                  <div key={i} className="flex items-start gap-3 px-4 py-2.5 hover:bg-black/[0.02] transition-colors">
+                    <span className="text-xs font-mono mt-0.5 flex-shrink-0 tabular-nums"
+                      style={{ color: 'var(--muted)', minWidth: 40 }}>
+                      {s.time || '—'}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      {s.url
+                        ? <a href={s.url} target="_blank" rel="noopener noreferrer"
+                            className="text-sm font-medium leading-snug hover:underline line-clamp-2"
+                            style={{ color: 'var(--text)' }}>{s.title}</a>
+                        : <p className="text-sm font-medium leading-snug line-clamp-2">{s.title}</p>
+                      }
+                      {s.name && (
+                        <span className="text-xs mt-0.5 inline-flex items-center gap-1" style={{ color: '#16a34a' }}>
+                          <Users2 size={10} />
+                          {s.name}
+                        </span>
+                      )}
+                    </div>
+                    {s.url && (
+                      <a href={s.url} target="_blank" rel="noopener noreferrer"
+                        className="flex-shrink-0 mt-0.5 opacity-40 hover:opacity-100 transition-opacity">
+                        <ExternalLink size={13} style={{ color: 'var(--muted)' }} />
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Toggle: hourly heatmap */}
+        {activeHours.length > 0 && (
+          <>
+            <button
+              onClick={() => setShowCatHeat(v => !v)}
+              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+              style={{ color: '#7c3aed', background: '#7c3aed12', border: '1px solid #7c3aed30' }}>
+              <BarChart3 size={12} />
+              {showCatHeat ? 'Hide' : 'Show'} Hourly Heatmap
+              {showCatHeat ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+            </button>
+
+            {showCatHeat && (
+              <SectionCard title={
+                <span className="flex items-center gap-2">
+                  <Globe size={14} style={{ color: '#7c3aed' }} />
+                  Category-wise Hourly Publishing · {date}
+                </span>
+              }>
+                <div className="overflow-x-auto">
+                  <table className="text-xs" style={{ borderCollapse: 'separate', borderSpacing: '2px 3px' }}>
+                    <thead>
+                      <tr>
+                        <th className="text-left pr-4 pb-2 font-semibold whitespace-nowrap"
+                          style={{ color: 'var(--muted)', minWidth: 160 }}>Category</th>
+                        {activeHours.map(h => (
+                          <th key={h} className="pb-2 text-center font-medium"
+                            style={{ color: 'var(--muted)', minWidth: 38 }}>
+                            {String(h).padStart(2, '0')}
+                          </th>
+                        ))}
+                        <th className="pb-2 pl-4 font-bold text-right" style={{ minWidth: 52 }}>Total</th>
+                      </tr>
+                      <tr>
+                        <td className="pr-4 pb-2 font-semibold" style={{ color: '#7c3aed' }}>All categories</td>
+                        {activeHours.map(h => (
+                          <td key={h} className="pb-2 text-center">
+                            <HeatCell count={hourTotals[h] || 0} max={maxHourTotal} />
+                          </td>
+                        ))}
+                        <td className="pb-2 pl-4 text-right font-bold" style={{ color: '#7c3aed' }}>{allStories.length}</td>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {catRows.map((c, i) => (
+                        <tr key={c.cat}>
+                          <td className="pr-4 py-0.5 capitalize whitespace-nowrap flex items-center gap-1.5">
+                            <span className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+                              style={{ background: CAT_PALETTE[i % CAT_PALETTE.length] }} />
+                            {c.cat}
+                          </td>
+                          {activeHours.map(h => (
+                            <td key={h} className="py-0.5 text-center">
+                              <HeatCell count={c.hourCounts[h] || 0} max={maxCatHour} />
+                            </td>
+                          ))}
+                          <td className="py-0.5 pl-4 text-right font-semibold" style={{ color: '#7c3aed' }}>
+                            {c.total}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <HeatLegend />
               </SectionCard>
             )}
           </>

@@ -1630,7 +1630,7 @@ function LeavesSection({ state, branch }) {
 // ADMIN TAB
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 function AdminTab({ emps, canEditHr }) {
-  const { state, branch } = useApp();
+  const { state, branch, isAdmin } = useApp();
   const [stats,   setStats]   = useState(null);
   const [loading, setLoading] = useState(true);
   const [sanctionEdit, setSanctionEdit] = useState(null); // {profile, count}
@@ -1764,7 +1764,7 @@ function AdminTab({ emps, canEditHr }) {
             <button onClick={downloadProfiles} className="btn-ghost flex items-center gap-1.5 text-sm">
               <Download size={14} /> Export
             </button>
-            {canEditHr() && (
+            {isAdmin() && (
               <>
                 <button onClick={() => api.downloadSanctionedTemplate().catch(e => alert('Download failed: ' + e.message))} className="btn-ghost flex items-center gap-1.5 text-sm">
                   <Download size={14} /> Template
@@ -1780,8 +1780,8 @@ function AdminTab({ emps, canEditHr }) {
         }
       >
         <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
-          Click the sanctioned count to update it. Vacant = Sanctioned - Available.
-          Figures follow the global State/Branch filter — set sanction posts branch-wise by selecting a branch first; the All view shows branch totals summed.
+          {isAdmin() ? 'Click the sanctioned count to update it.' : 'Sanctioned posts are set by Admin only.'}
+          {' '}Vacant = Sanctioned - Available. Figures follow the global State/Branch filter.
         </p>
         {bulkResult && (
           <div className={`mb-3 rounded-lg px-3 py-2 text-sm ${bulkResult.ok ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'}`}>
@@ -1807,7 +1807,7 @@ function AdminTab({ emps, canEditHr }) {
                   <td className="p-2 font-semibold">{p.profile}</td>
                   <td className="p-2 text-right">{p.available}</td>
                   <td className="p-2 text-right">
-                    {canEditHr() ? (
+                    {isAdmin() ? (
                       <button
                         onClick={() => setSanctionEdit({ profile: p.profile, count: p.sanctionedCount || '' })}
                         className="font-medium hover:opacity-70"
