@@ -99,13 +99,13 @@ module.exports = async function handler(req, res) {
 
   const alertBranches = alert?.branches || [];
 
-  if (alertBranches.length > 0 && !overrideChatId) {
-    // Smart mode: send to branch REs + State Heads
+  if (alertBranches.length > 0) {
+    // Smart mode: always try branch REs + State Heads first (ignore chat_id override)
     recipients = await getAlertRecipients(alertBranches);
   }
 
   if (recipients.length === 0) {
-    // Fallback: single chat_id (override or .env default)
+    // Fallback: explicit chat_id override OR .env default
     const fallbackChatId = overrideChatId || (process.env.TELEGRAM_CHAT_ID || '').trim();
     if (!fallbackChatId) return res.status(400).json({ ok: false, error: 'No recipients found and no chat_id configured' });
     recipients = [{ chatId: fallbackChatId, name: 'Default', branch: null, state: null }];
