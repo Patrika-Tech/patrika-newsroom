@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Bell, MessageCircle, Mail, Smartphone, Send,
@@ -7,6 +7,7 @@ import {
   Clock, VolumeX, ClipboardX, TrendingUp, FileCheck,
   UserMinus, UserX, CalendarDays, Gift, ShieldCheck,
   AlertTriangle, Zap, CalendarClock, MessageSquare,
+  ChevronRight, User, Building2, History,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.jsx';
 import { api } from '../api/client.js';
@@ -70,7 +71,15 @@ export default function Alerts() {
       .finally(() => setAlertsLoading(false));
   }, [globalState, globalBranch]);
   const [tgConfig, setTgConfig] = useState({ configured: false, chat_id: '' });
-  const [tgLogs,   setTgLogs]   = useState([]);
+
+  // DB-backed delivery log
+  const [dbLogs,        setDbLogs]        = useState([]);
+  const [dbLogsLoading, setDbLogsLoading] = useState(false);
+  const [dbLogsPage,    setDbLogsPage]    = useState(1);
+  const [dbLogsTotal,   setDbLogsTotal]   = useState(0);
+  const [dbLogsPages,   setDbLogsPages]   = useState(1);
+  const [expandedLog,   setExpandedLog]   = useState(null); // id of expanded row
+  const logSectionRef = useRef(null);
 
   // Config panel
   const [showConfig,  setShowConfig]  = useState(false);
@@ -105,6 +114,19 @@ export default function Alerts() {
   // ── Load alerts whenever global state/branch changes ──────────────────────
   useEffect(() => { loadAlerts(); }, [loadAlerts]);
 
+  const loadDbLogs = useCallback((page = 1) => {
+    setDbLogsLoading(true);
+    api.telegramLogs(page, 50)
+      .then(r => {
+        setDbLogs(r.logs || []);
+        setDbLogsTotal(r.total || 0);
+        setDbLogsPages(r.pages || 1);
+        setDbLogsPage(page);
+      })
+      .catch(() => {})
+      .finally(() => setDbLogsLoading(false));
+  }, []);
+
   // ── Load config once on mount ──────────────────────────────────────────────
   useEffect(() => {
     api.telegramConfig().then((cfg) => {
@@ -113,7 +135,8 @@ export default function Alerts() {
     });
     api.emailConfig().then(setEmailConfig);
     api.listUsers().then(rows => setAllUsers(rows || [])).catch(() => {});
-  }, []);
+    loadDbLogs(1);
+  }, [loadDbLogs]);
 
   // ── Telegram helpers ──────────────────────────────────────────────────────
   const sendAlertToTelegram = useCallback(async (alert) => {
@@ -121,12 +144,12 @@ export default function Alerts() {
     const res = await api.sendTelegramAlert({ alert, alert_id: alert.id, chat_id: chatIdInput || undefined });
     if (res.ok) {
       tgStatus.set(alert.id, 'sent');
-      setTgLogs((prev) => [{ id: Date.now(), alertId: alert.id, type: alert.type, text: alert.text, time: new Date().toLocaleTimeString(), status: 'sent' }, ...prev.slice(0, 9)]);
+      setTimeout(() => loadDbLogs(1), 800);
     } else {
       tgStatus.set(alert.id, 'error', res.error || 'Send failed');
     }
     setTimeout(() => tgStatus.set(alert.id, 'idle'), 4000);
-  }, [chatIdInput]);
+  }, [chatIdInput, loadDbLogs]);
 
   const sendCustomMessage = async () => {
     if (!customMsg.trim()) return;
@@ -136,7 +159,7 @@ export default function Alerts() {
     const res = await api.sendTelegramAlert({ message: formatted, chat_id: customChatId || chatIdInput || undefined });
     if (res.ok) {
       setComposerStatus('sent'); setCustomMsg('');
-      setTgLogs((prev) => [{ id: Date.now(), alertId: null, type: 'Custom', text: customMsg, time: new Date().toLocaleTimeString(), status: 'sent' }, ...prev.slice(0, 9)]);
+      setTimeout(() => loadDbLogs(1), 800);
       setTimeout(() => setComposerStatus('idle'), 3000);
     } else {
       setComposerStatus('error'); setComposerError(res.error || 'Failed to send.');
@@ -633,7 +656,7 @@ SMTP_FROM=Patrika Newsroom <you@gmail.com>   # optional`}</pre>
         </div>
       </div>
 
-      {/* ── Email Send History ────────────────────────────────────────────────── */}
+      {/* ── Email Send History (in-session) ──────────────────────────────────── */}
       {emailLogs.length > 0 && (
         <SectionCard className="mt-4" title={<span className="flex items-center gap-1.5"><Mail size={15} /> Email Send History</span>}>
           <div className="space-y-1.5">
@@ -652,21 +675,178 @@ SMTP_FROM=Patrika Newsroom <you@gmail.com>   # optional`}</pre>
         </SectionCard>
       )}
 
-      {/* ── Telegram Send History ─────────────────────────────────────────────── */}
-      {tgLogs.length > 0 && (
-        <SectionCard className="mt-4" title={<span className="flex items-center gap-1.5"><Send size={15} /> Telegram Send History</span>}>
-          <div className="space-y-1.5">
-            {tgLogs.map((log) => (
-              <div key={log.id} className="flex items-center gap-3 rounded-lg px-3 py-2" style={{ background: 'var(--bg)' }}>
-                <CheckCircle2 size={14} className="flex-shrink-0 text-green-500" />
-                <span className="flex-1 truncate text-xs">{log.text}</span>
-                <span className="flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: 'var(--surface)', color: 'var(--muted)' }}>{log.type}</span>
-                <span className="flex-shrink-0 text-xs" style={{ color: 'var(--muted)' }}>{log.time}</span>
+      {/* ── Telegram Delivery Log (DB-backed) ────────────────────────────────── */}
+      <div ref={logSectionRef} className="mt-4 rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3" style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
+          <div className="flex items-center gap-2">
+            <div style={{ background: '#0088cc22', borderRadius: 8, padding: '5px 7px', display: 'flex' }}>
+              <History size={15} style={{ color: '#0088cc' }} />
+            </div>
+            <div>
+              <div className="font-bold text-sm">Telegram Delivery Log</div>
+              <div className="text-xs" style={{ color: 'var(--muted)' }}>
+                {dbLogsLoading ? 'Loading…' : `${dbLogsTotal} messages · page ${dbLogsPage} of ${dbLogsPages}`}
               </div>
-            ))}
+            </div>
           </div>
-        </SectionCard>
-      )}
+          <button
+            className="flex items-center gap-1.5 text-xs rounded-lg px-3 py-1.5 transition hover:opacity-75"
+            style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
+            onClick={() => loadDbLogs(1)}
+            disabled={dbLogsLoading}
+          >
+            <RefreshCw size={12} className={dbLogsLoading ? 'animate-spin' : ''} /> Refresh
+          </button>
+        </div>
+
+        {/* Type legend */}
+        <div className="flex flex-wrap gap-2 px-4 py-2.5" style={{ background: 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
+          {[
+            { label: 'Manual Alert', color: '#dc2626', bg: '#fef2f2' },
+            { label: 'Delay Report', color: '#2563eb', bg: '#eff6ff' },
+            { label: 'Top Delay',    color: '#7c3aed', bg: '#f5f3ff' },
+            { label: 'Appreciation', color: '#059669', bg: '#ecfdf5' },
+            { label: 'Custom',       color: '#d97706', bg: '#fffbeb' },
+            { label: 'Auto',         color: '#6b7280', bg: 'var(--surface)' },
+          ].map(t => (
+            <span key={t.label} className="rounded-full px-2 py-0.5 text-xs font-semibold"
+              style={{ background: t.bg, color: t.color }}>
+              {t.label}
+            </span>
+          ))}
+        </div>
+
+        {/* Log rows */}
+        <div style={{ background: 'var(--bg)' }}>
+          {dbLogsLoading && dbLogs.length === 0 ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-sm" style={{ color: 'var(--muted)' }}>
+              <Loader2 size={16} className="animate-spin" /> Loading log…
+            </div>
+          ) : dbLogs.length === 0 ? (
+            <div className="py-10 text-center text-sm" style={{ color: 'var(--muted)' }}>No messages sent yet.</div>
+          ) : (
+            <div className="divide-y" style={{ divideColor: 'var(--border)' }}>
+              {dbLogs.map(log => {
+                const isExpanded = expandedLog === log.id;
+                const isSent     = log.status === 'sent';
+                const typeColors = {
+                  'Manual Alert': { color: '#dc2626', bg: '#fef2f2' },
+                  'Delay Report': { color: '#2563eb', bg: '#eff6ff' },
+                  'Top Delay':    { color: '#7c3aed', bg: '#f5f3ff' },
+                  'Appreciation': { color: '#059669', bg: '#ecfdf5' },
+                  'Custom':       { color: '#d97706', bg: '#fffbeb' },
+                  'Due Date':     { color: '#0891b2', bg: '#ecfeff' },
+                  'Payment Alert':{ color: '#b45309', bg: '#fef3c7' },
+                  'Visit Alert':  { color: '#4338ca', bg: '#eef2ff' },
+                  'Weekly Plan':  { color: '#047857', bg: '#ecfdf5' },
+                };
+                const tc = typeColors[log.type] || { color: '#6b7280', bg: 'var(--surface)' };
+
+                return (
+                  <div key={log.id} style={{ borderColor: 'var(--border)' }}>
+                    <div
+                      className="flex items-start gap-3 px-4 py-3 cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={() => setExpandedLog(isExpanded ? null : log.id)}
+                    >
+                      {/* Status dot */}
+                      <div className="mt-1 flex-shrink-0">
+                        {isSent
+                          ? <div style={{ width: 8, height: 8, borderRadius: 9999, background: '#22c55e', boxShadow: '0 0 0 2px #bbf7d0' }} />
+                          : <div style={{ width: 8, height: 8, borderRadius: 9999, background: '#ef4444', boxShadow: '0 0 0 2px #fecaca' }} />}
+                      </div>
+
+                      {/* Main content */}
+                      <div className="flex-1 min-w-0">
+                        {/* Row 1: recipient + type + time */}
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <div className="flex items-center gap-1">
+                            {log.recipient_name ? (
+                              <>
+                                <User size={11} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+                                <span className="text-xs font-semibold">{log.recipient_name}</span>
+                              </>
+                            ) : (
+                              <>
+                                <Send size={11} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+                                <span className="text-xs font-mono" style={{ color: 'var(--muted)' }}>{log.chat_id}</span>
+                              </>
+                            )}
+                          </div>
+                          {log.recipient_branch && (
+                            <div className="flex items-center gap-1">
+                              <Building2 size={10} style={{ color: 'var(--muted)' }} />
+                              <span className="text-xs" style={{ color: 'var(--muted)' }}>{log.recipient_branch}</span>
+                            </div>
+                          )}
+                          <span className="rounded-full px-2 py-0.5 text-xs font-semibold"
+                            style={{ background: tc.bg, color: tc.color }}>
+                            {log.type}
+                          </span>
+                          <span className="text-xs ml-auto" style={{ color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+                            {log.sent_at || `#${log.id}`}
+                          </span>
+                        </div>
+
+                        {/* Row 2: message preview */}
+                        <p className="text-xs leading-relaxed" style={{ color: 'var(--fg)' }}>
+                          {log.preview}{log.preview?.length >= 140 ? '…' : ''}
+                        </p>
+                      </div>
+
+                      {/* Expand chevron */}
+                      <ChevronRight size={14} className="mt-1 flex-shrink-0 transition-transform"
+                        style={{ color: 'var(--muted)', transform: isExpanded ? 'rotate(90deg)' : 'none' }} />
+                    </div>
+
+                    {/* Expanded: full HTML message */}
+                    {isExpanded && (
+                      <div className="px-4 pb-4 pt-1">
+                        <div className="rounded-lg p-3 text-xs leading-relaxed font-mono overflow-x-auto whitespace-pre-wrap break-words"
+                          style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--fg)', maxHeight: 320, overflowY: 'auto' }}>
+                          {/* Show plain text version of the HTML */}
+                          {(log.full_message || '').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')}
+                        </div>
+                        <div className="mt-2 flex items-center gap-3 text-xs" style={{ color: 'var(--muted)' }}>
+                          <span>Chat ID: <code>{log.chat_id}</code></span>
+                          {log.recipient_role && <span>Role: {log.recipient_role}</span>}
+                          {log.recipient_state && <span>State: {log.recipient_state}</span>}
+                          <span className="ml-auto">Log #{log.id}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Pagination */}
+        {dbLogsPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: '1px solid var(--border)', background: 'var(--surface)' }}>
+            <button
+              className="text-xs rounded-lg px-3 py-1.5 transition hover:opacity-75 disabled:opacity-40"
+              style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
+              disabled={dbLogsPage <= 1 || dbLogsLoading}
+              onClick={() => loadDbLogs(dbLogsPage - 1)}
+            >
+              ← Previous
+            </button>
+            <span className="text-xs" style={{ color: 'var(--muted)' }}>
+              Page {dbLogsPage} / {dbLogsPages}
+            </span>
+            <button
+              className="text-xs rounded-lg px-3 py-1.5 transition hover:opacity-75 disabled:opacity-40"
+              style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
+              disabled={dbLogsPage >= dbLogsPages || dbLogsLoading}
+              onClick={() => loadDbLogs(dbLogsPage + 1)}
+            >
+              Next →
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

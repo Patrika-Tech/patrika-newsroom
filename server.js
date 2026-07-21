@@ -232,6 +232,7 @@ app.all('/api/alerts/live',           h('./api/alerts/live'));
 app.all('/api/alerts/send-telegram',  h('./api/alerts/send-telegram'));
 app.all('/api/alerts/telegram-config',h('./api/alerts/telegram-config'));
 app.all('/api/alerts/telegram-test',  h('./api/alerts/telegram-test'));
+app.get('/api/alerts/telegram-logs',  h('./api/alerts/telegram-logs'));
 app.all('/api/alerts/send-email',     h('./api/alerts/send-email'));
 app.all('/api/alerts/email-config',   h('./api/alerts/email-config'));
 app.all('/api/alerts',                h('./api/alerts'));

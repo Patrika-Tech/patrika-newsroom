@@ -122,6 +122,7 @@ export const api = {
   deleteLegalCase:(id)       => request(`/legal/${id}`, { method: 'DELETE' }),
   alerts:       ()        => withFallback('/alerts',                          mock.alerts),
   alertsLive:   (state, branch) => request(`/alerts/live${state && state !== 'All' ? `?state=${encodeURIComponent(state)}${branch && branch !== 'All' ? `&branch=${encodeURIComponent(branch)}` : ''}` : branch && branch !== 'All' ? `?branch=${encodeURIComponent(branch)}` : ''}`),
+  telegramLogs: (page = 1, limit = 50) => request(`/alerts/telegram-logs?page=${page}&limit=${limit}`),
   reports:      ()        => withFallback('/reports', { reports: [] }),
   generateReport: (type, params = {}) => {
     const p = new URLSearchParams({ type, ...params });
