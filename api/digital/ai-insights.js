@@ -431,12 +431,42 @@ module.exports = async function handler(req, res) {
       }
     }
 
+    // ── Score each insight and pick top 5 ────────────────────────────────────
+    const SEV_SCORE  = { alert: 100, warning: 60, success: 30, info: 10 };
+    const TYPE_BONUS = {
+      editor_pace_alerts: 30,
+      team_story_pace:    25,
+      team_uv_pace:       25,
+      no_targets:         20,
+      breaking_speed:     15,
+      today_pulse:        15,
+      top_uv_performer:   10,
+      uv_efficiency:      10,
+      team_leaderboard:    8,
+      week_top_authors:    8,
+      best_day_traffic:    5,
+    };
+
+    insights.forEach(ins => {
+      let score = SEV_SCORE[ins.severity] || 0;
+      score += TYPE_BONUS[ins.id] || 0;
+      if (ins.action) score += 15;
+      if (Array.isArray(ins.data) && ins.data.length > 0) score += 8;
+      ins.score = score;
+    });
+
+    const top5 = [...insights]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+      .map((ins, i) => ({ ...ins, rank: i + 1 }));
+
     return res.json({
       month,
       day_progress: dp,
       computed_at:  new Date().toISOString(),
       total_editors: users.length,
       insights,
+      top5,
     });
   } catch (err) {
     console.error('[ai-insights]', err);
