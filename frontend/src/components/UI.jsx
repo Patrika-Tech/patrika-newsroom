@@ -6,7 +6,7 @@ export function Logo({ size = 36, withText = true }) {
       <img src={logo} alt="Patrika" style={{ height: size }} className="object-contain" />
       {withText && (
         <span className="hidden sm:block font-semibold leading-tight">
-          Newsroom<br /><span className="text-[10px] uppercase tracking-widest text-patrika-gold">Intelligence</span>
+          Pulse<span className="text-patrika-gold">Patrika</span>
         </span>
       )}
     </div>
